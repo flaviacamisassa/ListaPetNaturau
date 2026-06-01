@@ -877,20 +877,20 @@ function computeMP(selected){
   const mp={};
   Object.values(selected).forEach(s=>{
     const r=s.recipe; if(!r) return;
-    let kg;
+    let mult; // multiplier for ingredients
     if(r.type==='comercial'){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
-      kg=tg/1000;
+      mult=tg/1000; // comercial: ingredients per kg, so mult=kg
     } else {
-      const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
-      kg=pkts*(r.pktG||0)/1000;
+      // personalizada: ingredients are per unit (per package), so mult=number of packages
+      mult=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
     }
-    if(!kg) return;
+    if(!mult) return;
     r.ingredients.forEach(ing=>{
       const raw=ing.raw||false;
       const k=ing.n.toLowerCase()+'__'+(raw?'cru':'coz');
       if(!mp[k]) mp[k]={name:ing.n,total:0,raw};
-      mp[k].total+=ing.q*kg;
+      mp[k].total+=ing.q*mult;
     });
   });
   return Object.values(mp).sort((a,b)=>a.raw!==b.raw?(a.raw?1:-1):a.name.localeCompare(b.name,'pt'));
@@ -958,16 +958,25 @@ function gerarRelatorio(){
   secHeader('INGREDIENTES POR RECEITA');
   Object.values(sel).forEach(s=>{
     const r=s.recipe; if(!r) return;
-    let kg;
-    if(r.type==='comercial'){const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);if(!tg)return;kg=tg/1000;}
-    else{const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);kg=pkts*(r.pktG||0)/1000;if(!kg)return;}
+    let mult, totalLabel;
+    if(r.type==='comercial'){
+      const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+      if(!tg) return;
+      mult=tg/1000; // kg for comercial (ingredients are per kg)
+      totalLabel=(mult).toFixed(2)+' kg';
+    } else {
+      mult=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30); // pkts for personalizada (ingredients are per unit)
+      if(!mult) return;
+      const totalG=mult*(r.pktG||0);
+      totalLabel=`${mult} pacotes · ${totalG>0?(totalG/1000).toFixed(2)+' kg':''}`;
+    }
     if(y>240){doc.addPage();y=15;}
     const rows=r.ingredients.sort((a,b)=>a.n.localeCompare(b.n,'pt')).map(ing=>{
-      const tot=ing.q*kg;
+      const tot=ing.q*mult;
       return [ing.n+(ing.raw?' 🥩':''),tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
     });
     doc.autoTable({startY:y,
-      head:[[{content:`${recName(r)} — ${kg.toFixed(2)} kg`,colSpan:2,styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:9}}]],
+      head:[[{content:`${recName(r)} — ${totalLabel}`,colSpan:2,styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:9}}]],
       body:rows,styles:{fontSize:8,cellPadding:2.5},
       columnStyles:{0:{cellWidth:130},1:{cellWidth:52,halign:'right'}},margin:{left:L,right:14}});
     y=doc.lastAutoTable.finalY+5;
@@ -1163,15 +1172,29 @@ function viewVersion(recipeId, vIdx){
     <div style="background:var(--amber-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:14px">
       <i class="fas fa-clock"></i> Salva em ${v.savedAt||'data desconhecida'} · ${v.ingredients.length} ingredientes · ${v.defQty||'?'} unid · ${v.temp||'?'}°C
     </div>
-    <div style="margin-bottom:12px">
+    <div style="margin-bottom:14px">
       ${v.pkts&&v.pktG?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:8px">📦 ${v.pkts} pacotes de ${v.pktG}g</div>`:''}
       ${v.ingredients.map(i=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
-        <span>${i.n}${i.raw?' 🥩':''}</span><span style="font-weight:700">${i.q}g</span>
+        <span>${i.n}${i.raw?' 🥩 <span style="font-size:10px;color:var(--red)">CRU</span>':''}</span>
+        <span style="font-weight:700">${i.q}g</span>
       </div>`).join('')}
     </div>
-    <button class="btn btn-primary btn-full" onclick="restoreVersion('${recipeId}',${vIdx})">
-      <i class="fas fa-undo"></i> Restaurar esta versão
-    </button>`);
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-full" onclick="restoreVersion('${recipeId}',${vIdx})">
+        <i class="fas fa-undo"></i> Restaurar
+      </button>
+      <button class="btn btn-danger btn-full" onclick="deleteVersion('${recipeId}',${vIdx})">
+        <i class="fas fa-trash-alt"></i> Apagar versão
+      </button>
+    </div>`);
+}
+
+function deleteVersion(recipeId, vIdx){
+  const r=state.db.recipes.find(x=>x.id===recipeId); if(!r) return;
+  if(!confirm('Apagar esta versão anterior? Não é possível desfazer.')) return;
+  r.versions.splice(vIdx,1);
+  saveData(); closeModal(); renderReceitas();
+  toast('🗑 Versão apagada');
 }
 function restoreVersion(recipeId, vIdx){
   const r=state.db.recipes.find(x=>x.id===recipeId); if(!r) return;
@@ -1213,12 +1236,13 @@ function newRecipe(type){
     </div>
     <div id="nr-ings"></div>
     <button class="btn btn-sm" style="margin-bottom:14px;width:100%" onclick="addNrIng('${type}')"><i class="fas fa-plus"></i> Ingrediente</button>
+    ${type==='personalizada'?`<div style="background:var(--amber-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:12px"><i class="fas fa-info-circle"></i> Todos os ingredientes são <strong>cozidos</strong> por padrão. Marque 🥩 Cru apenas para carnes em dieta crua.</div>`:''}
     <button class="btn btn-primary btn-full" onclick="saveNewRecipe('${type}')"><i class="fas fa-save"></i> Salvar Receita</button>`);
   for(let i=0;i<4;i++) addNrIng(type);
 }
 
 function addNrIng(type){
-  const showRaw=type==='barf';
+  const showRaw=type==='barf'||type==='personalizada';
   const d=document.createElement('div');
   d.className='ing-row';
   d.style.gridTemplateColumns=`2fr 75px ${showRaw?'95px ':''}32px`;
@@ -1303,7 +1327,7 @@ function editRecipe(id){
 
 function addErIng(type,name='',qty='',raw=false){
   const c=document.getElementById('er-ings'); if(!c) return;
-  const showRaw=type==='barf';
+  const showRaw=type==='barf'||type==='personalizada';
   const d=document.createElement('div'); d.className='ing-row';
   d.style.gridTemplateColumns=`2fr 75px ${showRaw?'95px ':''}32px`;
   d.innerHTML=`<input type="text" placeholder="Ingrediente" value="${name}">
