@@ -626,21 +626,29 @@ function renderProducao() {
         </div>`;
       } else {
         const emb = embStr(r);
+        const pacotesPadrao = r.pkts || r.defQty || 30;
+        const pacotesSel = s.pkts !== undefined ? s.pkts : pacotesPadrao;
+        const totalGPer = pacotesSel * (r.pktG||0);
         html += `<div class="pkt-section">
           <div class="pkt-name">${r.tutor} — ${r.dog} <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span></div>
-          ${emb?`<div style="font-size:12px;color:var(--green-dark);margin-bottom:10px;font-weight:600">📦 ${emb}</div>`:''}
+          ${emb?`<div style="font-size:12px;color:var(--green-dark);margin-bottom:10px;font-weight:600">📦 Embalagem padrão: ${emb}</div>`:''}
           <div class="field">
-            <label>Unidades a produzir</label>
+            <label>Pacotes a produzir neste pedido</label>
             <div class="pkt-stepper" style="justify-content:flex-start;gap:8px">
-              <button onclick="adjPer('${id}',-1)">−</button>
-              <input type="number" min="1" value="${s.qty||r.defQty}" oninput="setPer('${id}',this.value)" style="width:70px">
-              <button onclick="adjPer('${id}',1)">+</button>
-              <span style="font-size:12px;color:var(--text-3)">padrão: ${r.defQty}</span>
+              <button onclick="adjPerPkts('${id}',-5)">−5</button>
+              <button onclick="adjPerPkts('${id}',-1)">−</button>
+              <input type="number" min="1" value="${pacotesSel}" oninput="setPerPkts('${id}',this.value)" style="width:64px">
+              <button onclick="adjPerPkts('${id}',1)">+</button>
+              <button onclick="adjPerPkts('${id}',5)">+5</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:5px;display:flex;gap:12px">
+              <span>Padrão mensal: <strong>${pacotesPadrao} pacotes</strong></span>
+              ${r.pktG?`<span>= <strong style="color:var(--green-dark)">${(totalGPer/1000).toFixed(2)} kg</strong></span>`:''}
             </div>
           </div>
           <div class="pkt-total-bar">
-            <span style="font-size:12px;color:var(--text-2)">Total</span>
-            <span class="pkt-total-val">${subtG>0?(subtG/1000).toFixed(2)+' kg':'—'}</span>
+            <span style="font-size:12px;color:var(--text-2)">Total deste pedido</span>
+            <span class="pkt-total-val">${totalGPer>0?(totalGPer/1000).toFixed(2)+' kg':'—'}</span>
           </div>
         </div>`;
       }
@@ -660,14 +668,37 @@ function renderProducao() {
 
 function setProdTab(t){state.prodTab=t;renderProducao();}
 
+function totalGofSel(s) {
+  if (!s) return 0;
+  const r = s.recipe;
+  if (!r) return 0;
+  if (r.type === 'personalizada') {
+    const pkts = s.pkts !== undefined ? s.pkts : (r.pkts||r.defQty||30);
+    return pkts * (r.pktG||0);
+  }
+  return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+}
+
 function toggleRecipe(id){
   const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
   if(state.today.selected[id]){delete state.today.selected[id];}
   else{
     if(r.type==='comercial') state.today.selected[id]={recipe:r,p200:0,p500:0,customs:[]};
-    else state.today.selected[id]={recipe:r,qty:r.defQty};
+    else state.today.selected[id]={recipe:r,pkts:r.pkts||r.defQty||30};
   }
   renderProducao();
+}
+
+function adjPerPkts(id,delta){
+  if(!state.today.selected[id]) return;
+  const r=state.today.selected[id].recipe;
+  const cur=state.today.selected[id].pkts!==undefined?state.today.selected[id].pkts:(r.pkts||r.defQty||30);
+  state.today.selected[id].pkts=Math.max(1,cur+delta);
+  renderProducao();
+}
+function setPerPkts(id,val){
+  if(!state.today.selected[id]) return;
+  state.today.selected[id].pkts=Math.max(1,parseInt(val)||1);
 }
 
 function adjPkt(id,field,delta){
@@ -723,7 +754,8 @@ function computeMP(selected){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
       kg=tg/1000;
     } else {
-      kg=(s.qty||r.defQty)*(r.pktG||0)/1000;
+      const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
+      kg=pkts*(r.pktG||0)/1000;
     }
     if(!kg) return;
     r.ingredients.forEach(ing=>{
@@ -783,8 +815,9 @@ function gerarRelatorio(){
       const cust=(s.customs||[]).map(c=>`${c.qty}×${c.g}g (${c.name})`).join(', ');
       pedRows.push([r.name+(r.barf?' [BARF]':''),pad.join(' + ')||'—',cust||'—',(tg/1000).toFixed(2)+' kg']);
     } else {
-      const qty=s.qty||r.defQty; const tg=qty*(r.pktG||0);
-      pedRows.push([`${r.tutor} — ${r.dog}`,embStr(r)||`${qty} unid`,'—',tg>0?(tg/1000).toFixed(2)+' kg':`${qty} unid`]);
+      const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
+      const tg=pkts*(r.pktG||0);
+      pedRows.push([`${r.tutor} — ${r.dog}`,`${pkts} pacotes de ${r.pktG||'?'}g`,'—',tg>0?(tg/1000).toFixed(2)+' kg':`${pkts} pacotes`]);
     }
   });
   doc.autoTable({startY:y,head:[['Receita','Pacotes padrão','Personalizado','Total']],body:pedRows,
@@ -799,7 +832,7 @@ function gerarRelatorio(){
     const r=s.recipe; if(!r) return;
     let kg;
     if(r.type==='comercial'){const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);if(!tg)return;kg=tg/1000;}
-    else{kg=(s.qty||r.defQty)*(r.pktG||0)/1000;if(!kg)return;}
+    else{const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);kg=pkts*(r.pktG||0)/1000;if(!kg)return;}
     if(y>240){doc.addPage();y=15;}
     const rows=r.ingredients.sort((a,b)=>a.n.localeCompare(b.n,'pt')).map(ing=>{
       const tot=ing.q*kg;
@@ -906,8 +939,9 @@ function renderReceitas(){
       ${barf.length?barf.map(rItem).join(''):'<div class="empty"><i class="fas fa-leaf"></i><p>Nenhuma receita BARF</p></div>'}
     </div>`;
   } else {
-    const tutors=[...new Set(pers.map(r=>r.tutor))];
     const q=state.recipeSearch||'';
+    if(!state.openTutors) state.openTutors={};
+    if(!state.openDogs) state.openDogs={};
     html+=`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
       <div style="flex:1;position:relative">
         <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
@@ -917,21 +951,113 @@ function renderReceitas(){
       </div>
       <button class="btn btn-primary btn-sm" onclick="newRecipe('personalizada')"><i class="fas fa-plus"></i> Nova</button>
     </div>`;
-    const filtered = q
-      ? pers.filter(r=>r.dog.toLowerCase().includes(q.toLowerCase())||r.tutor.toLowerCase().includes(q.toLowerCase()))
-      : pers;
-    if(!filtered.length) html+=`<div class="card"><div class="empty"><i class="fas fa-search"></i><p>Nenhum resultado para "${q}"</p></div></div>`;
-    const filtTutors=[...new Set(filtered.map(r=>r.tutor))];
-    filtTutors.forEach(tutor=>{
-      const pets=filtered.filter(r=>r.tutor===tutor);
-      html+=`<div class="card"><div class="card-header"><span class="card-title">${tutor} <span class="badge badge-gray">${pets.length}</span></span></div>
-        ${pets.map(rItem).join('')}</div>`;
-    });
+    const filtered=q?pers.filter(r=>r.dog.toLowerCase().includes(q.toLowerCase())||r.tutor.toLowerCase().includes(q.toLowerCase())):pers;
+    if(!filtered.length){html+=`<div class="card"><div class="empty"><i class="fas fa-search"></i><p>Nenhum resultado para "${q}"</p></div></div>`;}
+    else{
+      const filtTutors=[...new Set(filtered.map(r=>r.tutor))];
+      filtTutors.forEach(tutor=>{
+        const pets=filtered.filter(r=>r.tutor===tutor);
+        const isOpen=state.openTutors[tutor]||!!q;
+        html+=`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)">
+          <div onclick="toggleTutor('${tutor.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:var(--green-light)">
+            <div style="display:flex;align-items:center;gap:10px">
+              <i class="fas fa-folder${isOpen?'-open':''}" style="color:var(--green-dark);font-size:16px"></i>
+              <span style="font-family:'Coolvetica','DM Sans',sans-serif;font-size:16px">${tutor}</span>
+              <span class="badge badge-green">${pets.length} pet${pets.length!==1?'s':''}</span>
+            </div>
+            <i class="fas fa-chevron-${isOpen?'up':'down'}" style="color:var(--green-dark);font-size:12px"></i>
+          </div>
+          ${isOpen?`<div style="padding:10px 12px 12px">`+pets.map(r=>{
+            const dk=tutor+'__'+r.dog;
+            const isDogOpen=state.openDogs[dk]||!!q;
+            const versions=r.versions||[];
+            const emb=embStr(r);
+            const cruC=r.ingredients.filter(i=>i.raw).length;
+            return `<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <div onclick="toggleDog('${tutor.replace(/'/g,"\\'")}','${r.dog.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;background:var(--bg)">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <i class="fas fa-dog" style="color:var(--text-3);font-size:13px"></i>
+                  <span style="font-weight:700;font-size:13px">${r.dog}</span>
+                  <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
+                  ${cruC>0?`<span style="color:var(--red);font-size:11px;font-weight:600">${cruC} cru${cruC>1?'s':''}</span>`:''}
+                  ${versions.length>0?`<span class="badge badge-gray" style="font-size:10px">${versions.length} versão anterior${versions.length>1?'':'es'}</span>`:''}
+                </div>
+                <i class="fas fa-chevron-${isDogOpen?'up':'down'}" style="color:var(--text-3);font-size:11px"></i>
+              </div>
+              ${isDogOpen?`<div style="padding:10px 12px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+                  <div>
+                    <div style="font-size:11px;font-weight:700;color:var(--green-dark);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📋 Receita atual</div>
+                    <div style="font-size:12px;color:var(--text-2)">${r.ingredients.length} ing · ${r.pkts||r.defQty} pcts · ${r.pktG||'?'}g/pct · ${r.temp||'?'}°C</div>
+                    ${emb?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-top:2px">📦 ${emb}</div>`:''}
+                    <div style="font-size:11px;color:var(--text-3);margin-top:3px">${r.ingredients.slice(0,4).map(i=>i.n).join(', ')}${r.ingredients.length>4?'…':''}</div>
+                  </div>
+                  <button class="btn btn-sm btn-primary" onclick="editRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-edit"></i> Editar</button>
+                </div>
+                ${versions.length>0?`<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
+                  <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px"><i class="fas fa-history"></i> Versões anteriores</div>
+                  ${versions.slice().reverse().map((v,vi)=>`<div style="background:var(--bg);border-radius:7px;padding:8px 10px;margin-bottom:5px;display:flex;align-items:flex-start;justify-content:space-between">
+                    <div>
+                      <div style="font-size:11px;font-weight:700;color:var(--text-2)">Salva em ${v.savedAt||'?'}</div>
+                      <div style="font-size:11px;color:var(--text-3)">${v.ingredients.length} ing · ${v.defQty||'?'} unid · ${v.temp||'?'}°C</div>
+                      <div style="font-size:11px;color:var(--text-3)">${v.ingredients.slice(0,3).map(i=>i.n).join(', ')}${v.ingredients.length>3?'…':''}</div>
+                    </div>
+                    <button class="btn btn-sm" onclick="viewVersion('${r.id}',${versions.length-1-vi});event.stopPropagation()" style="font-size:11px"><i class="fas fa-eye"></i></button>
+                  </div>`).join('')}
+                </div>`:''}
+              </div>`:''}
+            </div>`;
+          }).join('')+`</div>`:''}
+        </div>`;
+      });
+    }
   }
   document.getElementById('content').innerHTML=html;
 }
 
-function setRecTab(t){state.recipeTab=t;state.recipeSearch='';renderReceitas();}
+function setRecTab(t){state.recipeTab=t;state.recipeSearch='';state.openTutors={};state.openDogs={};renderReceitas();}
+
+function toggleTutor(tutor){
+  if(!state.openTutors) state.openTutors={};
+  state.openTutors[tutor]=!state.openTutors[tutor];
+  renderReceitas();
+}
+function toggleDog(tutor,dog){
+  if(!state.openDogs) state.openDogs={};
+  const k=tutor+'__'+dog;
+  state.openDogs[k]=!state.openDogs[k];
+  renderReceitas();
+}
+function viewVersion(recipeId, vIdx){
+  const r=state.db.recipes.find(x=>x.id===recipeId); if(!r) return;
+  const v=(r.versions||[])[vIdx]; if(!v) return;
+  openModal(`<div class="modal-title">Versão anterior — ${r.dog} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div style="background:var(--amber-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:14px">
+      <i class="fas fa-clock"></i> Salva em ${v.savedAt||'data desconhecida'} · ${v.ingredients.length} ingredientes · ${v.defQty||'?'} unid · ${v.temp||'?'}°C
+    </div>
+    <div style="margin-bottom:12px">
+      ${v.pkts&&v.pktG?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:8px">📦 ${v.pkts} pacotes de ${v.pktG}g</div>`:''}
+      ${v.ingredients.map(i=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>${i.n}${i.raw?' 🥩':''}</span><span style="font-weight:700">${i.q}g</span>
+      </div>`).join('')}
+    </div>
+    <button class="btn btn-primary btn-full" onclick="restoreVersion('${recipeId}',${vIdx})">
+      <i class="fas fa-undo"></i> Restaurar esta versão
+    </button>`);
+}
+function restoreVersion(recipeId, vIdx){
+  const r=state.db.recipes.find(x=>x.id===recipeId); if(!r) return;
+  const v=(r.versions||[])[vIdx]; if(!v) return;
+  // save current as a new version before restoring
+  const now=new Date().toLocaleDateString('pt-BR');
+  if(!r.versions) r.versions=[];
+  r.versions.push({savedAt:now,ingredients:[...r.ingredients],defQty:r.defQty,pkts:r.pkts,pktG:r.pktG,temp:r.temp,cat:r.cat});
+  // restore
+  Object.assign(r, {ingredients:v.ingredients,defQty:v.defQty,pkts:v.pkts,pktG:v.pktG,temp:v.temp,cat:v.cat});
+  r.versions.splice(vIdx,1);
+  saveData(); closeModal(); renderReceitas();
+  toast('✅ Versão restaurada!');
+}
 
 function newRecipe(type){
   const isCom=type==='comercial'||type==='barf';
@@ -1074,6 +1200,11 @@ function saveEditRecipe(id,type){
   if(!ingredients.length){toast('⚠️ Adicione ao menos um ingrediente');return;}
   const cat=document.getElementById('er-cat').value;
   const temp=parseInt(document.getElementById('er-temp')?.value)||null;
+  // archive current version
+  const now=new Date().toLocaleDateString('pt-BR');
+  if(!r.versions) r.versions=[];
+  r.versions.push({savedAt:now,ingredients:JSON.parse(JSON.stringify(r.ingredients)),defQty:r.defQty,pkts:r.pkts,pktG:r.pktG,temp:r.temp,cat:r.cat});
+  if(r.versions.length>10) r.versions=r.versions.slice(-10);
   if(type==='comercial'||type==='barf'){
     r.name=name; r.subname=document.getElementById('er-sub')?.value.trim()||r.subname||'';
     r.cat=cat; r.temp=temp; r.ingredients=ingredients;
