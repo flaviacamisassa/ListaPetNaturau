@@ -412,7 +412,7 @@ async function saveData() {
       const meta = await fetch(
         'https://www.googleapis.com/drive/v3/files',
         {method:'POST', headers:{Authorization:`Bearer ${state.driveToken}`,'Content-Type':'application/json'},
-         body:JSON.stringify({name:FILE_NAME,mimeType:'application/json'})}
+         body:JSON.stringify({name:FILE_NAME,mimeType:'application/json',parents:["16dOp9n_WWl_0N6aQ6am3su3XenvkZWFv"]})}
       );
       const mj = await meta.json(); state.driveFileId = mj.id;
       await fetch(
