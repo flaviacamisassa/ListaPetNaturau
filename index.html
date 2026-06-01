@@ -528,7 +528,8 @@ function renderProducao() {
   // grade de receitas
   if (tab==='cozida') {
     const coz = comerciais.filter(r=>!r.barf);
-    html += `<div class="recipe-grid">` + coz.map(r=>{
+    if(!coz.length) html+=`<div class="empty"><i class="fas fa-utensils"></i><p>Nenhuma receita cozida cadastrada</p></div>`;
+    else html += `<div class="recipe-grid">` + coz.map(r=>{
       const isSel = !!sel[r.id];
       const shortName = r.name.replace('Dieta Comercial ','');
       return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
@@ -551,21 +552,36 @@ function renderProducao() {
       </div>`;
     }).join('')+`</div>`;
   } else {
-    if (!personalizadas.length) html += `<div class="empty"><i class="fas fa-user-friends"></i><p>Nenhuma dieta personalizada cadastrada</p></div>`;
-    tutors.forEach(tutor=>{
-      const pets = personalizadas.filter(r=>r.tutor===tutor);
-      html += `<div class="section-label"><i class="fas fa-building" style="font-size:10px"></i> ${tutor}</div>
-        <div class="recipe-grid">`+pets.map(r=>{
-          const isSel=!!sel[r.id];
-          return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
-            <div class="rc-check"><i class="fas fa-check"></i></div>
-            <div class="rc-name">${r.dog}</div>
-            <div class="rc-sub">${r.tutor}</div>
-            <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
-            ${embStr(r)?`<div style="font-size:10px;color:var(--green-dark);margin-top:4px;font-weight:600">📦 ${embStr(r)}</div>`:''}
-          </div>`;
-        }).join('')+`</div>`;
-    });
+    // PESSOAL — barra de busca + pastas por tutor
+    const pq = state.prodSearch||'';
+    html += `<div style="position:relative;margin-bottom:10px">
+      <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
+      <input type="text" placeholder="Buscar por cachorro ou tutor…" value="${pq}"
+        oninput="state.prodSearch=this.value;renderProducao()"
+        style="padding-left:32px;background:white">
+    </div>`;
+    const filteredP = pq
+      ? personalizadas.filter(r=>r.dog.toLowerCase().includes(pq.toLowerCase())||r.tutor.toLowerCase().includes(pq.toLowerCase()))
+      : personalizadas;
+    if(!filteredP.length){
+      html+=`<div class="empty"><i class="fas fa-search"></i><p>${pq?`Nenhum resultado para "${pq}"`:'Nenhuma dieta personalizada cadastrada'}</p></div>`;
+    } else {
+      const filtTutors=[...new Set(filteredP.map(r=>r.tutor))];
+      filtTutors.forEach(tutor=>{
+        const pets=filteredP.filter(r=>r.tutor===tutor);
+        html += `<div class="section-label"><i class="fas fa-building" style="font-size:10px"></i> ${tutor}</div>
+          <div class="recipe-grid">`+pets.map(r=>{
+            const isSel=!!sel[r.id];
+            return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
+              <div class="rc-check"><i class="fas fa-check"></i></div>
+              <div class="rc-name">${r.dog}</div>
+              <div class="rc-sub">${r.tutor}</div>
+              <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
+              ${embStr(r)?`<div style="font-size:10px;color:var(--green-dark);margin-top:4px;font-weight:600">📦 ${embStr(r)}</div>`:''}
+            </div>`;
+          }).join('')+`</div>`;
+      });
+    }
   }
 
   // configuração de pacotes das receitas selecionadas
@@ -679,14 +695,126 @@ function totalGofSel(s) {
   return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
 }
 
+function setProdTab(t){state.prodTab=t;state.prodSearch='';renderProducao();}
+
+function totalGofSel(s) {
+  if (!s) return 0;
+  const r = s.recipe;
+  if (!r) return 0;
+  if (r.type === 'personalizada') {
+    const pkts = s.pkts !== undefined ? s.pkts : (r.pkts||r.defQty||30);
+    return pkts * (r.pktG||0);
+  }
+  return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+}
+
 function toggleRecipe(id){
   const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
-  if(state.today.selected[id]){delete state.today.selected[id];}
-  else{
-    if(r.type==='comercial') state.today.selected[id]={recipe:r,p200:0,p500:0,customs:[]};
-    else state.today.selected[id]={recipe:r,pkts:r.pkts||r.defQty||30};
+  if(state.today.selected[id]){
+    openModal(`<div class="modal-title">Remover da produção?</div>
+      <p style="font-size:13px;color:var(--text-2);margin-bottom:20px">Remover <strong>${recName(r)}</strong> da lista de hoje?</p>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-danger btn-full" onclick="confirmRemoveRecipe('${id}')">Sim, remover</button>
+        <button class="btn btn-full" onclick="closeModal()">Cancelar</button>
+      </div>`);
+    return;
   }
-  renderProducao();
+  openAddRecipeModal(id);
+}
+
+function confirmRemoveRecipe(id){
+  delete state.today.selected[id]; closeModal(); renderProducao();
+}
+
+function openAddRecipeModal(id){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  window._modalCustoms=[];
+  let body='';
+  if(r.type==='comercial'){
+    body=`<div style="margin-bottom:14px">
+      <div class="section-label">Pacotes 200g</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('m200',-1)">−</button>
+        <input type="number" id="m200" min="0" value="0" style="width:52px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('m200',1)">+</button>
+      </div>
+      <div class="section-label" style="margin-top:12px">Pacotes 500g</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('m500',-1)">−</button>
+        <input type="number" id="m500" min="0" value="0" style="width:52px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('m500',1)">+</button>
+      </div>
+      <div class="section-label" style="margin-top:12px">📦 Pacote personalizado (opcional)</div>
+      <input type="text" id="mcn" placeholder="Nome do cliente" style="margin-bottom:6px">
+      <div class="row2" style="margin-bottom:6px">
+        <input type="number" id="mcg" placeholder="g/pacote" min="1">
+        <input type="number" id="mcq" placeholder="qtd" min="1" value="1">
+      </div>
+      <button class="custom-add-btn" onclick="modalAddCustom()"><i class="fas fa-plus"></i> Adicionar cliente</button>
+      <div id="modal-customs" style="margin-top:6px"></div>
+    </div>`;
+  } else {
+    const pad=r.pkts||r.defQty||30;
+    body=`<div style="margin-bottom:14px">
+      ${embStr(r)?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 Embalagem padrão: ${embStr(r)}</div>`:''}
+      <div class="section-label">Pacotes a produzir neste pedido</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('mper',-5)">−5</button>
+        <button onclick="modalAdj('mper',-1)">−</button>
+        <input type="number" id="mper" min="1" value="${pad}" style="width:64px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('mper',1)">+</button>
+        <button onclick="modalAdj('mper',5)">+5</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão mensal: <strong>${pad} pacotes</strong>${r.pktG?` · ${r.pktG}g/pacote`:''}</div>
+    </div>`;
+  }
+  openModal(`<div class="modal-title">${recName(r)} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:14px"><span class="badge ${r.barf?'badge-red':catBadge(r.cat)}">${r.barf?'BARF':r.cat}</span></div>
+    ${body}
+    <button class="gen-btn" style="border-radius:10px" onclick="confirmAddRecipe('${id}')">
+      <i class="fas fa-check"></i> Confirmar e adicionar à produção
+    </button>`);
+}
+
+function modalAdj(fieldId,delta){
+  const el=document.getElementById(fieldId); if(!el) return;
+  el.value=Math.max(0,parseInt(el.value||0)+delta);
+}
+
+function modalAddCustom(){
+  const name=document.getElementById('mcn')?.value.trim();
+  const g=parseInt(document.getElementById('mcg')?.value)||0;
+  const qty=parseInt(document.getElementById('mcq')?.value)||1;
+  if(!name||!g){toast('⚠️ Informe nome e gramas');return;}
+  window._modalCustoms=window._modalCustoms||[];
+  window._modalCustoms.push({name,g,qty});
+  document.getElementById('mcn').value='';
+  document.getElementById('mcg').value='';
+  document.getElementById('mcq').value='1';
+  const el=document.getElementById('modal-customs');
+  if(el) el.innerHTML=window._modalCustoms.map((c,i)=>`<div class="custom-entry">
+    <span class="ce-name">${c.name}</span>
+    <span class="ce-detail">${c.qty}×${c.g}g</span>
+    <button onclick="window._modalCustoms.splice(${i},1);document.getElementById('modal-customs').innerHTML='';modalAddCustom()">×</button>
+  </div>`).join('');
+}
+
+function confirmAddRecipe(id){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  if(r.type==='comercial'){
+    const p200=parseInt(document.getElementById('m200')?.value)||0;
+    const p500=parseInt(document.getElementById('m500')?.value)||0;
+    const customs=window._modalCustoms||[];
+    const totalG=p200*200+p500*500+customs.reduce((a,c)=>a+c.qty*c.g,0);
+    if(!totalG){toast('⚠️ Configure ao menos um pacote');return;}
+    state.today.selected[id]={recipe:r,p200,p500,customs:[...customs]};
+  } else {
+    const pkts=parseInt(document.getElementById('mper')?.value)||(r.pkts||r.defQty||30);
+    state.today.selected[id]={recipe:r,pkts};
+  }
+  window._modalCustoms=[];
+  closeModal(); renderProducao();
+  toast('✅ Adicionado à produção!');
 }
 
 function adjPerPkts(id,delta){
