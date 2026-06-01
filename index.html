@@ -1141,7 +1141,10 @@ function renderReceitas(){
                     ${emb?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-top:2px">📦 ${emb}</div>`:''}
                     <div style="font-size:11px;color:var(--text-3);margin-top:3px">${r.ingredients.slice(0,4).map(i=>i.n).join(', ')}${r.ingredients.length>4?'…':''}</div>
                   </div>
-                  <button class="btn btn-sm btn-primary" onclick="editRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-edit"></i> Editar</button>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    <button class="btn btn-sm btn-primary" onclick="editRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-edit"></i> Editar</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-trash-alt"></i></button>
+                  </div>
                 </div>
                 ${versions.length>0?`<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
                   <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px"><i class="fas fa-history"></i> Versões anteriores</div>
