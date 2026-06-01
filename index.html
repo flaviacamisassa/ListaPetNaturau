@@ -334,6 +334,8 @@ function handleAuth() {
   if (state.driveToken && state.driveToken !== 'local') {
     if (confirm('Desconectar do Google Drive?')) {
       state.driveToken = null; state.driveFileId = null;
+      localStorage.removeItem('petnaturau-drive-token');
+      localStorage.removeItem('petnaturau-drive-token-exp');
       document.getElementById('auth-btn').className = 'auth-btn';
       document.getElementById('auth-label').textContent = 'Drive';
       toast('Desconectado do Drive');
@@ -352,13 +354,27 @@ function handleAuth() {
 
 function checkAuthCallback() {
   const hash = location.hash;
-  if (!hash.includes('access_token')) return false;
-  const p = new URLSearchParams(hash.slice(1));
-  state.driveToken = p.get('access_token');
-  history.replaceState(null, '', location.pathname);
-  document.getElementById('auth-btn').className = 'auth-btn connected';
-  document.getElementById('auth-label').textContent = 'Drive ✓';
-  return true;
+  if (hash.includes('access_token')) {
+    const p = new URLSearchParams(hash.slice(1));
+    state.driveToken = p.get('access_token');
+    const exp = Date.now() + (parseInt(p.get('expires_in')||3600)*1000);
+    localStorage.setItem('petnaturau-drive-token', state.driveToken);
+    localStorage.setItem('petnaturau-drive-token-exp', exp);
+    history.replaceState(null, '', location.pathname);
+    document.getElementById('auth-btn').className = 'auth-btn connected';
+    document.getElementById('auth-label').textContent = 'Drive ✓';
+    return true;
+  }
+  // restore saved token if not expired
+  const saved = localStorage.getItem('petnaturau-drive-token');
+  const exp = parseInt(localStorage.getItem('petnaturau-drive-token-exp')||0);
+  if (saved && Date.now() < exp) {
+    state.driveToken = saved;
+    document.getElementById('auth-btn').className = 'auth-btn connected';
+    document.getElementById('auth-label').textContent = 'Drive ✓';
+    return true;
+  }
+  return false;
 }
 
 // ── DATA PERSISTENCE ─────────────────────────────────────
@@ -590,12 +606,13 @@ function renderProducao() {
               <button onclick="removeCustom('${id}',${i})">×</button>
             </div>`).join('')}
             <div class="custom-add-form">
-              <input type="text" placeholder="Nome do cliente" id="cn-${id}">
+              <input type="text" placeholder="Nome do cliente" id="cn-${id}" oninput="previewCustom('${id}')">
               <div class="row2">
-                <input type="number" placeholder="g/pacote" id="cg-${id}" min="1">
-                <input type="number" placeholder="qtd" id="cq-${id}" min="1" value="1">
+                <input type="number" placeholder="g/pacote" id="cg-${id}" min="1" oninput="previewCustom('${id}')">
+                <input type="number" placeholder="qtd" id="cq-${id}" min="1" value="1" oninput="previewCustom('${id}')">
               </div>
-              <button class="custom-add-btn" onclick="addCustom('${id}')">+ Adicionar cliente</button>
+              <div id="custom-preview-${id}" style="display:none;background:var(--green-light);border-radius:7px;padding:8px 10px;margin-bottom:6px;font-size:12px;color:var(--green-dark);font-weight:600"></div>
+              <button class="custom-add-btn" onclick="addCustom('${id}')"><i class="fas fa-check"></i> Confirmar e incluir</button>
             </div>
           </div>
           <div class="pkt-total-bar">
@@ -667,6 +684,17 @@ function adjPer(id,delta){
 function setPer(id,val){
   if(!state.today.selected[id]) return;
   state.today.selected[id].qty=Math.max(1,parseInt(val)||1);
+}
+function previewCustom(id){
+  const name=document.getElementById('cn-'+id)?.value.trim();
+  const g=parseInt(document.getElementById('cg-'+id)?.value)||0;
+  const qty=parseInt(document.getElementById('cq-'+id)?.value)||1;
+  const el=document.getElementById('custom-preview-'+id);
+  if(!el) return;
+  if(name&&g){
+    el.style.display='block';
+    el.innerHTML=`✅ ${qty} pacote${qty>1?'s':''} de ${g}g para <strong>${name}</strong> = ${(qty*g/1000).toFixed(3)} kg`;
+  } else { el.style.display='none'; }
 }
 function addCustom(id){
   const name=document.getElementById('cn-'+id)?.value.trim();
@@ -874,11 +902,23 @@ function renderReceitas(){
     </div>`;
   } else {
     const tutors=[...new Set(pers.map(r=>r.tutor))];
-    html+=`<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-      <button class="btn btn-primary btn-sm" onclick="newRecipe('personalizada')"><i class="fas fa-plus"></i> Nova</button></div>`;
-    if(!pers.length) html+=`<div class="card"><div class="empty"><i class="fas fa-user-friends"></i><p>Nenhuma dieta personalizada</p></div></div>`;
-    tutors.forEach(tutor=>{
-      const pets=pers.filter(r=>r.tutor===tutor);
+    const q=state.recipeSearch||'';
+    html+=`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+      <div style="flex:1;position:relative">
+        <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
+        <input type="text" placeholder="Buscar por cachorro ou tutor…" value="${q}"
+          oninput="state.recipeSearch=this.value;renderReceitas()"
+          style="padding-left:32px;background:white">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="newRecipe('personalizada')"><i class="fas fa-plus"></i> Nova</button>
+    </div>`;
+    const filtered = q
+      ? pers.filter(r=>r.dog.toLowerCase().includes(q.toLowerCase())||r.tutor.toLowerCase().includes(q.toLowerCase()))
+      : pers;
+    if(!filtered.length) html+=`<div class="card"><div class="empty"><i class="fas fa-search"></i><p>Nenhum resultado para "${q}"</p></div></div>`;
+    const filtTutors=[...new Set(filtered.map(r=>r.tutor))];
+    filtTutors.forEach(tutor=>{
+      const pets=filtered.filter(r=>r.tutor===tutor);
       html+=`<div class="card"><div class="card-header"><span class="card-title">${tutor} <span class="badge badge-gray">${pets.length}</span></span></div>
         ${pets.map(rItem).join('')}</div>`;
     });
@@ -886,7 +926,7 @@ function renderReceitas(){
   document.getElementById('content').innerHTML=html;
 }
 
-function setRecTab(t){state.recipeTab=t;renderReceitas();}
+function setRecTab(t){state.recipeTab=t;state.recipeSearch='';renderReceitas();}
 
 function newRecipe(type){
   const isCom=type==='comercial'||type==='barf';
@@ -983,18 +1023,56 @@ function renderHistorico(){
   if(!history.length){
     html+=`<div class="empty"><i class="fas fa-history"></i><p>Nenhuma produção registrada ainda.<br>Gere o primeiro relatório na aba Produção!</p></div>`;
   } else {
-    html+=history.map(h=>`<div class="history-item" onclick="viewHistDetail('${h.id}')">
-      <div>
+    html+=history.map(h=>`<div class="history-item">
+      <div onclick="viewHistDetail('${h.id}')" style="flex:1;cursor:pointer">
         <div class="hi-date">${h.dateStr||h.date}</div>
         <div class="hi-meta">${(h.recipes||[]).slice(0,3).join(' · ')}${(h.recipes||[]).length>3?` +${h.recipes.length-3}`:''}</div>
       </div>
-      <div style="text-align:right">
+      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <div class="hi-kg">${h.totalKg} kg</div>
-        <div style="font-size:11px;color:var(--text-3);margin-top:2px">${(h.recipes||[]).length} receita${(h.recipes||[]).length!==1?'s':''} <i class="fas fa-chevron-right" style="font-size:9px"></i></div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="editHistEntry('${h.id}')">
+            <i class="fas fa-edit"></i> Editar
+          </button>
+          <button class="btn btn-sm btn-danger" style="font-size:11px;padding:3px 8px" onclick="deleteHistEntry('${h.id}')">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </div>
       </div>
     </div>`).join('');
   }
   document.getElementById('content').innerHTML=html;
+}
+
+function editHistEntry(id){
+  const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
+  // carrega a seleção salva de volta para o estado de hoje
+  state.today.selected = JSON.parse(JSON.stringify(h.selected||{}));
+  // garante que cada seleção tem a receita atualizada do db
+  Object.keys(state.today.selected).forEach(rid=>{
+    const r=state.db.recipes.find(x=>x.id===rid);
+    if(r) state.today.selected[rid].recipe=r;
+    else delete state.today.selected[rid];
+  });
+  state.today.date = h.date;
+  // remove do histórico para ser regravado ao gerar PDF
+  state.db.history=state.db.history.filter(x=>x.id!==id);
+  navigate('producao');
+  toast('✏️ Produção carregada para edição — ajuste e gere o PDF novamente.',4000);
+}
+
+function deleteHistEntry(id){
+  openModal(`<div class="modal-title">Excluir este registro?</div>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:20px">O registro do histórico será removido permanentemente.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteHist('${id}')">Sim, excluir</button>
+      <button class="btn btn-full" onclick="closeModal()">Cancelar</button>
+    </div>`);
+}
+function confirmDeleteHist(id){
+  state.db.history=state.db.history.filter(x=>x.id!==id);
+  saveData(); closeModal(); renderHistorico();
+  toast('🗑 Registro excluído');
 }
 
 function viewHistDetail(id){
