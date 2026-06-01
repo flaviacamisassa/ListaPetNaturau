@@ -458,11 +458,15 @@ function render() {
 function renderNoData() {
   document.getElementById('content').innerHTML = `
     <div class="empty" style="padding-top:60px">
-      <i class="fas fa-cloud-upload-alt"></i>
-      <p style="font-weight:700;font-size:15px;margin-bottom:6px">Bem-vinda ao PetNaturau!</p>
-      <p style="margin-bottom:20px">Conecte ao Google Drive ou use o armazenamento local para começar.</p>
-      <button class="btn btn-primary btn-full" style="margin-bottom:10px" onclick="handleAuth()"><i class="fab fa-google-drive"></i> Conectar Google Drive</button>
-      <button class="btn btn-full" onclick="initLocal()"><i class="fas fa-mobile-alt"></i> Usar somente neste dispositivo</button>
+      <i class="fas fa-paw" style="font-size:48px;opacity:.3;color:var(--green-dark)"></i>
+      <p style="font-family:'Coolvetica','DM Sans',sans-serif;font-size:22px;margin:12px 0 6px;opacity:.8">PetNaturau</p>
+      <p style="margin-bottom:24px;font-size:13px">Faça login com o Google Drive para acessar as receitas e o histórico de produção.</p>
+      <button class="btn btn-primary btn-full" style="max-width:260px;margin:0 auto 10px" onclick="handleAuth()">
+        <i class="fab fa-google-drive"></i> Entrar com Google Drive
+      </button>
+      <button class="btn btn-full" style="max-width:260px;margin:0 auto" onclick="initLocal()">
+        <i class="fas fa-mobile-alt"></i> Usar somente neste dispositivo
+      </button>
     </div>`;
 }
 
@@ -885,6 +889,7 @@ function renderReceitas(){
       </div>
       <div class="li-right">
         <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
+        <button class="btn btn-icon btn-sm" onclick="editRecipe('${r.id}')"><i class="fas fa-edit"></i></button>
         <button class="btn btn-icon btn-sm btn-danger" onclick="deleteRecipe('${r.id}')"><i class="fas fa-trash-alt"></i></button>
       </div>
     </div>`;
@@ -1000,6 +1005,89 @@ function saveNewRecipe(type){
   state.db.recipes.push(recipe);
   saveData(); closeModal(); renderReceitas();
   toast('✅ Receita salva!');
+}
+
+function editRecipe(id){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  const type=r.barf?'barf':r.type;
+  const isCom=type==='comercial'||type==='barf';
+  openModal(`<div class="modal-title">Editar Receita <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div class="field"><label>Nome</label><input type="text" id="er-name" value="${r.name||''}"></div>
+    ${isCom
+      ?`<div class="field"><label>Subtítulo</label><input type="text" id="er-sub" value="${r.subname||''}"></div>`
+      :`<div class="row2">
+          <div class="field"><label>Tutor/empresa</label><input type="text" id="er-tutor" value="${r.tutor||''}"></div>
+          <div class="field"><label>Cachorro</label><input type="text" id="er-dog" value="${r.dog||''}"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Nº pacotes/mês</label><input type="number" id="er-pkts" value="${r.pkts||r.defQty||30}"></div>
+          <div class="field"><label>Peso/pacote (g)</label><input type="number" id="er-pktg" step="0.1" value="${r.pktG||''}"></div>
+        </div>`}
+    <div class="row2">
+      <div class="field"><label>Categoria</label>
+        <select id="er-cat">${['Frango','Boi','Pato','Peixe','Porco','Peru','Misto'].map(c=>`<option ${r.cat===c?'selected':''}>${c}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Temp. °C</label><input type="number" id="er-temp" value="${r.temp||''}"></div>
+    </div>
+    <div class="divider"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="margin:0">${isCom?'Ingredientes por 1 kg':'Ingredientes por unidade'}</label>
+      <button class="btn btn-sm" onclick="addErIng('${type}')"><i class="fas fa-plus"></i> Linha</button>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 75px ${type==='barf'?'95px ':''}32px;gap:5px;margin-bottom:6px">
+      <span style="font-size:11px;color:var(--text-2);font-weight:600">Ingrediente</span>
+      <span style="font-size:11px;color:var(--text-2);font-weight:600">g</span>
+      ${type==='barf'?'<span style="font-size:11px;color:var(--text-2);font-weight:600">Preparo</span>':''}
+      <span></span>
+    </div>
+    <div id="er-ings"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="saveEditRecipe('${id}','${type}')">
+      <i class="fas fa-save"></i> Salvar Alterações
+    </button>`);
+  setTimeout(()=>{ r.ingredients.forEach(ing=>addErIng(type,ing.n,ing.q,ing.raw||false)); },60);
+}
+
+function addErIng(type,name='',qty='',raw=false){
+  const c=document.getElementById('er-ings'); if(!c) return;
+  const showRaw=type==='barf';
+  const d=document.createElement('div'); d.className='ing-row';
+  d.style.gridTemplateColumns=`2fr 75px ${showRaw?'95px ':''}32px`;
+  d.innerHTML=`<input type="text" placeholder="Ingrediente" value="${name}">
+    <input type="number" placeholder="g" min="0" step="0.1" value="${qty||''}">
+    ${showRaw?`<label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer"><input type="checkbox" style="width:auto" ${raw?'checked':''}> 🥩 Cru</label>`:''}
+    <button class="btn btn-icon btn-sm btn-danger" onclick="this.parentElement.remove()" style="padding:5px"><i class="fas fa-times"></i></button>`;
+  c.appendChild(d);
+}
+
+function saveEditRecipe(id,type){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  const name=document.getElementById('er-name')?.value.trim();
+  if(!name){toast('⚠️ Informe o nome');return;}
+  const rows=document.querySelectorAll('#er-ings .ing-row');
+  const ingredients=[];
+  rows.forEach(row=>{
+    const inps=row.querySelectorAll('input[type=text],input[type=number]');
+    const cb=row.querySelector('input[type=checkbox]');
+    const n=inps[0].value.trim(),q=parseFloat(inps[1].value);
+    if(n&&q>0) ingredients.push({n,q,raw:cb?cb.checked:false});
+  });
+  if(!ingredients.length){toast('⚠️ Adicione ao menos um ingrediente');return;}
+  const cat=document.getElementById('er-cat').value;
+  const temp=parseInt(document.getElementById('er-temp')?.value)||null;
+  if(type==='comercial'||type==='barf'){
+    r.name=name; r.subname=document.getElementById('er-sub')?.value.trim()||r.subname||'';
+    r.cat=cat; r.temp=temp; r.ingredients=ingredients;
+  } else {
+    const tutor=document.getElementById('er-tutor')?.value.trim();
+    const dog=document.getElementById('er-dog')?.value.trim();
+    if(!tutor||!dog){toast('⚠️ Informe tutor e cachorro');return;}
+    r.tutor=tutor; r.dog=dog; r.cat=cat; r.temp=temp; r.ingredients=ingredients;
+    r.pkts=parseInt(document.getElementById('er-pkts')?.value)||r.pkts||null;
+    r.pktG=parseFloat(document.getElementById('er-pktg')?.value)||r.pktG||null;
+    r.defQty=r.pkts||30;
+  }
+  saveData(); closeModal(); renderReceitas();
+  toast('✅ Receita atualizada!');
 }
 
 function deleteRecipe(id){
