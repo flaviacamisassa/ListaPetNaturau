@@ -962,7 +962,7 @@ function gerarRelatorio(){
       const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
       const tg=unidades*(r.pktG||0);
       const embLabel=r.pkts&&r.pkts!==r.defQty?`${r.pkts} pacotes de ${r.pktG}g`:(r.pktG?`${r.pkts||unidades} pacotes de ${r.pktG}g`:'—');
-      pedRows.push([`${r.tutor} — ${r.dog}`,`${unidades} unidades produzidas`,embLabel,tg>0?(tg/1000).toFixed(2)+' kg':`${unidades} unid`]);
+      pedRows.push([`${r.tutor} — ${r.dog} (${r.cat})`,`${unidades} unidades produzidas`,embLabel,tg>0?(tg/1000).toFixed(2)+' kg':`${unidades} unid`]);
     }
   });
   doc.autoTable({startY:y,head:[['Receita','Pacotes padrão','Personalizado','Total']],body:pedRows,
@@ -995,7 +995,7 @@ function gerarRelatorio(){
       return [ing.n+(ing.raw?' 🥩':''),tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
     });
     doc.autoTable({startY:y,
-      head:[[{content:`${recName(r)} — ${totalLabel}`,colSpan:2,styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:9}}]],
+      head:[[{content:`${r.tutor} — ${r.dog} (${r.cat}) — ${totalLabel}`,colSpan:2,styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:9}}]],
       body:rows,styles:{fontSize:8,cellPadding:2.5},
       columnStyles:{0:{cellWidth:130},1:{cellWidth:52,halign:'right'}},margin:{left:L,right:14}});
     y=doc.lastAutoTable.finalY+5;
