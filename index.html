@@ -654,28 +654,28 @@ function renderProducao() {
         </div>`;
       } else {
         const emb = embStr(r);
-        const pacotesPadrao = r.pkts || r.defQty || 30;
-        const pacotesSel = s.pkts !== undefined ? s.pkts : pacotesPadrao;
-        const totalGPer = pacotesSel * (r.pktG||0);
+        const unidadesPadrao = r.defQty || 30;
+        const unidadesSel = s.unidades !== undefined ? s.unidades : unidadesPadrao;
+        const totalGPer = unidadesSel * (r.pktG||0);
+        const embLabel = r.pkts && r.pkts !== r.defQty
+          ? `📦 Embalagem: ${r.pkts} pacotes de ${r.pktG}g (${r.pkts/r.defQty}x ao dia)`
+          : emb ? `📦 ${emb}` : '';
         html += `<div class="pkt-section">
           <div class="pkt-name">${r.tutor} — ${r.dog} <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span></div>
-          ${emb?`<div style="font-size:12px;color:var(--green-dark);margin-bottom:10px;font-weight:600">📦 Embalagem padrão: ${emb}</div>`:''}
+          ${embLabel?`<div style="font-size:12px;color:var(--green-dark);margin-bottom:10px;font-weight:600">${embLabel}</div>`:''}
           <div class="field">
-            <label>Pacotes a produzir neste pedido</label>
+            <label>Unidades a produzir (dias)</label>
             <div class="pkt-stepper" style="justify-content:flex-start;gap:8px">
-              <button onclick="adjPerPkts('${id}',-5)">−5</button>
-              <button onclick="adjPerPkts('${id}',-1)">−</button>
-              <input type="number" min="1" value="${pacotesSel}" oninput="setPerPkts('${id}',this.value)" style="width:64px">
-              <button onclick="adjPerPkts('${id}',1)">+</button>
-              <button onclick="adjPerPkts('${id}',5)">+5</button>
+              <button onclick="adjPerUnid('${id}',-5)">−5</button>
+              <button onclick="adjPerUnid('${id}',-1)">−</button>
+              <input type="number" min="1" value="${unidadesSel}" oninput="setPerUnid('${id}',this.value)" style="width:64px">
+              <button onclick="adjPerUnid('${id}',1)">+</button>
+              <button onclick="adjPerUnid('${id}',5)">+5</button>
             </div>
-            <div style="font-size:11px;color:var(--text-3);margin-top:5px;display:flex;gap:12px">
-              <span>Padrão mensal: <strong>${pacotesPadrao} pacotes</strong></span>
-              ${r.pktG?`<span>= <strong style="color:var(--green-dark)">${(totalGPer/1000).toFixed(2)} kg</strong></span>`:''}
-            </div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:5px">Padrão: <strong>${unidadesPadrao} unidades</strong>${r.pktG?` · ${r.pktG}g por unidade`:''}</div>
           </div>
           <div class="pkt-total-bar">
-            <span style="font-size:12px;color:var(--text-2)">Total deste pedido</span>
+            <span style="font-size:12px;color:var(--text-2)">Total de matéria-prima</span>
             <span class="pkt-total-val">${totalGPer>0?(totalGPer/1000).toFixed(2)+' kg':'—'}</span>
           </div>
         </div>`;
@@ -701,8 +701,8 @@ function totalGofSel(s) {
   const r = s.recipe;
   if (!r) return 0;
   if (r.type === 'personalizada') {
-    const pkts = s.pkts !== undefined ? s.pkts : (r.pkts||r.defQty||30);
-    return pkts * (r.pktG||0);
+    const unidades = s.unidades !== undefined ? s.unidades : (r.defQty||30);
+    return unidades * (r.pktG||0);
   }
   return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
 }
@@ -714,8 +714,8 @@ function totalGofSel(s) {
   const r = s.recipe;
   if (!r) return 0;
   if (r.type === 'personalizada') {
-    const pkts = s.pkts !== undefined ? s.pkts : (r.pkts||r.defQty||30);
-    return pkts * (r.pktG||0);
+    const unidades = s.unidades !== undefined ? s.unidades : (r.defQty||30);
+    return unidades * (r.pktG||0);
   }
   return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
 }
@@ -766,10 +766,12 @@ function openAddRecipeModal(id){
       <div id="modal-customs" style="margin-top:6px"></div>
     </div>`;
   } else {
-    const pad=r.pkts||r.defQty||30;
+    const pad=r.defQty||30;
+    const pktsInfo=r.pkts&&r.pkts!==pad?`<div style="font-size:11px;color:var(--blue);font-weight:600;margin-top:4px">📦 Embalagem: ${r.pkts} pacotes de ${r.pktG||'?'}g</div>`
+      :(r.pktG?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-top:4px">📦 ${embStr(r)}</div>`:'');
     body=`<div style="margin-bottom:14px">
-      ${embStr(r)?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 Embalagem padrão: ${embStr(r)}</div>`:''}
-      <div class="section-label">Pacotes a produzir neste pedido</div>
+      ${pktsInfo}
+      <div class="section-label" style="margin-top:10px">Unidades a produzir (dias)</div>
       <div class="pkt-stepper">
         <button onclick="modalAdj('mper',-5)">−5</button>
         <button onclick="modalAdj('mper',-1)">−</button>
@@ -777,7 +779,7 @@ function openAddRecipeModal(id){
         <button onclick="modalAdj('mper',1)">+</button>
         <button onclick="modalAdj('mper',5)">+5</button>
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão mensal: <strong>${pad} pacotes</strong>${r.pktG?` · ${r.pktG}g/pacote`:''}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão: <strong>${pad} unidades</strong>${r.pktG?` · ${r.pktG}g por unidade`:''}</div>
     </div>`;
   }
   openModal(`<div class="modal-title">${recName(r)} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
@@ -821,24 +823,24 @@ function confirmAddRecipe(id){
     if(!totalG){toast('⚠️ Configure ao menos um pacote');return;}
     state.today.selected[id]={recipe:r,p200,p500,customs:[...customs]};
   } else {
-    const pkts=parseInt(document.getElementById('mper')?.value)||(r.pkts||r.defQty||30);
-    state.today.selected[id]={recipe:r,pkts};
+    const unidades=parseInt(document.getElementById('mper')?.value)||(r.defQty||30);
+    state.today.selected[id]={recipe:r, unidades};
   }
   window._modalCustoms=[];
   closeModal(); renderProducao();
   toast('✅ Adicionado à produção!');
 }
 
-function adjPerPkts(id,delta){
+function adjPerUnid(id,delta){
   if(!state.today.selected[id]) return;
   const r=state.today.selected[id].recipe;
-  const cur=state.today.selected[id].pkts!==undefined?state.today.selected[id].pkts:(r.pkts||r.defQty||30);
-  state.today.selected[id].pkts=Math.max(1,cur+delta);
+  const cur=state.today.selected[id].unidades!==undefined?state.today.selected[id].unidades:(r.defQty||30);
+  state.today.selected[id].unidades=Math.max(1,cur+delta);
   renderProducao();
 }
-function setPerPkts(id,val){
+function setPerUnid(id,val){
   if(!state.today.selected[id]) return;
-  state.today.selected[id].pkts=Math.max(1,parseInt(val)||1);
+  state.today.selected[id].unidades=Math.max(1,parseInt(val)||1);
 }
 
 function adjPkt(id,field,delta){
@@ -894,8 +896,10 @@ function computeMP(selected){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
       mult=tg/1000; // comercial: ingredients per kg, so mult=kg
     } else {
-      // personalizada: ingredients are per unit (per package), so mult=number of packages
-      mult=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
+      // personalizada: ingredients are per unit produced (defQty = days/units cooked)
+      // pkts = number of packages for labeling (may differ, e.g. 2 portions/day = 2x pkts)
+      // The multiplier for ingredients must always be the number of UNITS PRODUCED (defQty)
+      mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
     }
     if(!mult) return;
     r.ingredients.forEach(ing=>{
@@ -955,9 +959,10 @@ function gerarRelatorio(){
       const cust=(s.customs||[]).map(c=>`${c.qty}×${c.g}g (${c.name})`).join(', ');
       pedRows.push([r.name+(r.barf?' [BARF]':''),pad.join(' + ')||'—',cust||'—',(tg/1000).toFixed(2)+' kg']);
     } else {
-      const pkts=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30);
-      const tg=pkts*(r.pktG||0);
-      pedRows.push([`${r.tutor} — ${r.dog}`,`${pkts} pacotes de ${r.pktG||'?'}g`,'—',tg>0?(tg/1000).toFixed(2)+' kg':`${pkts} pacotes`]);
+      const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
+      const tg=unidades*(r.pktG||0);
+      const embLabel=r.pkts&&r.pkts!==r.defQty?`${r.pkts} pacotes de ${r.pktG}g`:(r.pktG?`${r.pkts||unidades} pacotes de ${r.pktG}g`:'—');
+      pedRows.push([`${r.tutor} — ${r.dog}`,`${unidades} unidades produzidas`,embLabel,tg>0?(tg/1000).toFixed(2)+' kg':`${unidades} unid`]);
     }
   });
   doc.autoTable({startY:y,head:[['Receita','Pacotes padrão','Personalizado','Total']],body:pedRows,
@@ -977,10 +982,12 @@ function gerarRelatorio(){
       mult=tg/1000; // kg for comercial (ingredients are per kg)
       totalLabel=(mult).toFixed(2)+' kg';
     } else {
-      mult=s.pkts!==undefined?s.pkts:(r.pkts||r.defQty||30); // pkts for personalizada (ingredients are per unit)
+      // unidades = units actually cooked; pkts = packaging labels (may be 2x for 2 portions/day)
+      mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
       if(!mult) return;
       const totalG=mult*(r.pktG||0);
-      totalLabel=`${mult} pacotes · ${totalG>0?(totalG/1000).toFixed(2)+' kg':''}`;
+      const embInfo=r.pkts&&r.pkts!==mult?` · embalar ${r.pkts} pacotes de ${r.pktG}g`:(r.pktG?` · ${r.pktG}g/pacote`:'');
+      totalLabel=`${mult} unid produzidas${embInfo}`;
     }
     if(y>240){doc.addPage();y=15;}
     const rows=r.ingredients.sort((a,b)=>a.n.localeCompare(b.n,'pt')).map(ing=>{
