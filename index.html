@@ -568,8 +568,8 @@ function renderProducao() {
     const pq = state.prodSearch||'';
     html += `<div style="position:relative;margin-bottom:10px">
       <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
-      <input type="text" placeholder="Buscar por cachorro ou tutor…" value="${pq}"
-        oninput="state.prodSearch=this.value;renderProducao()"
+      <input type="text" id="prod-search-input" placeholder="Buscar por cachorro ou tutor…" value="${pq}"
+        oninput="debounceProdSearch(this.value)"
         style="padding-left:32px;background:white">
     </div>`;
     const filteredP = pq
@@ -1094,8 +1094,8 @@ function renderReceitas(){
     html+=`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
       <div style="flex:1;position:relative">
         <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
-        <input type="text" placeholder="Buscar por cachorro ou tutor…" value="${q}"
-          oninput="state.recipeSearch=this.value;renderReceitas()"
+        <input type="text" id="rec-search-input" placeholder="Buscar por cachorro ou tutor…" value="${q}"
+          oninput="debounceRecSearch(this.value)"
           style="padding-left:32px;background:white">
       </div>
       <button class="btn btn-primary btn-sm" onclick="newRecipe('personalizada')"><i class="fas fa-plus"></i> Nova</button>
@@ -1175,6 +1175,30 @@ function renderReceitas(){
 }
 
 function setRecTab(t){state.recipeTab=t;state.recipeSearch='';state.openTutors={};state.openDogs={};renderReceitas();}
+
+let _recSearchTimer=null;
+function debounceRecSearch(val){
+  state.recipeSearch=val;
+  clearTimeout(_recSearchTimer);
+  _recSearchTimer=setTimeout(()=>{
+    const pos=document.getElementById('rec-search-input')?.selectionStart;
+    renderReceitas();
+    const el=document.getElementById('rec-search-input');
+    if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  },50);
+}
+
+let _prodSearchTimer=null;
+function debounceProdSearch(val){
+  state.prodSearch=val;
+  clearTimeout(_prodSearchTimer);
+  _prodSearchTimer=setTimeout(()=>{
+    const pos=document.getElementById('prod-search-input')?.selectionStart;
+    renderProducao();
+    const el=document.getElementById('prod-search-input');
+    if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  },50);
+}
 
 function toggleTutor(tutor){
   if(!state.openTutors) state.openTutors={};
