@@ -684,14 +684,126 @@ function renderProducao() {
   }
 
   if (totalG>0) {
+    const selIds = Object.keys(state.today.selected);
+    const nCom = selIds.filter(id=>state.db.recipes.find(r=>r.id===id)?.type==='comercial').length;
+    const nPer = selIds.filter(id=>state.db.recipes.find(r=>r.id===id)?.type==='personalizada').length;
     html += `<div class="gen-btn-wrap">
-      <button class="gen-btn" onclick="gerarRelatorio()">
-        <i class="fas fa-file-pdf"></i> Gerar PDF — ${(totalG/1000).toFixed(2)} kg
+      <button class="gen-btn" onclick="abrirCarrinho()" style="background:var(--green);border-color:var(--green-dark)">
+        <i class="fas fa-shopping-cart"></i>
+        Ver Resumo
+        <span style="background:white;color:var(--green-dark);border-radius:12px;padding:1px 8px;font-size:12px;margin-left:4px">${selIds.length}</span>
+        <span style="font-size:12px;opacity:.8;margin-left:6px">${(totalG/1000).toFixed(2)} kg</span>
       </button>
     </div>`;
   }
 
   document.getElementById('content').innerHTML = html;
+}
+
+function abrirCarrinho(){
+  const sel = state.today.selected;
+  const selIds = Object.keys(sel);
+  if(!selIds.length){toast('Nenhuma receita selecionada');return;}
+
+  const comerciais = selIds.filter(id=>{
+    const r=state.db.recipes.find(x=>x.id===id);
+    return r?.type==='comercial';
+  });
+  const personalizadas = selIds.filter(id=>{
+    const r=state.db.recipes.find(x=>x.id===id);
+    return r?.type==='personalizada';
+  });
+
+  const totalG = selIds.reduce((a,id)=>a+totalGofSel(sel[id]),0);
+  const totalComG = comerciais.reduce((a,id)=>a+totalGofSel(sel[id]),0);
+  const totalPerG = personalizadas.reduce((a,id)=>a+totalGofSel(sel[id]),0);
+
+  const renderComItem = id => {
+    const s=sel[id]; const r=s.recipe;
+    const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+    const parts=[];
+    if((s.p200||0)>0) parts.push(`${s.p200}×200g`);
+    if((s.p500||0)>0) parts.push(`${s.p500}×500g`);
+    (s.customs||[]).forEach(c=>parts.push(`${c.qty}×${c.g}g (${c.name})`));
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:10px">
+      <div>
+        <div style="font-size:13px;font-weight:700">${r.name.replace('Dieta Comercial ','')}${r.barf?' <span style="background:var(--red-light);color:var(--red);font-size:10px;padding:1px 6px;border-radius:10px">BARF</span>':''}</div>
+        <div style="font-size:11px;color:var(--text-2);margin-top:2px">${parts.join(' · ')||'—'}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-weight:700;color:var(--green-dark);font-family:'DM Mono',monospace">${(tg/1000).toFixed(2)} kg</div>
+        <button class="btn btn-sm btn-danger" style="font-size:10px;padding:2px 7px;margin-top:3px" onclick="removerDoCarrinho('${id}')">✕ remover</button>
+      </div>
+    </div>`;
+  };
+
+  const renderPerItem = id => {
+    const s=sel[id]; const r=s.recipe;
+    const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
+    const tg=totalGofSel(s);
+    const embLabel=r.pkts&&r.pkts!==r.defQty?`${r.pkts} pacotes de ${r.pktG}g`:(r.pktG?`${r.pkts||unidades} pacotes de ${r.pktG}g`:'');
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:10px">
+      <div>
+        <div style="font-size:13px;font-weight:700">${r.tutor} — ${r.dog} <span style="background:var(--green-light);color:var(--green-dark);font-size:10px;padding:1px 6px;border-radius:10px">${r.cat}</span></div>
+        <div style="font-size:11px;color:var(--text-2);margin-top:2px">${unidades} unidades${embLabel?` · 📦 ${embLabel}`:''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-weight:700;color:var(--green-dark);font-family:'DM Mono',monospace">${tg>0?(tg/1000).toFixed(2)+' kg':'—'}</div>
+        <button class="btn btn-sm btn-danger" style="font-size:10px;padding:2px 7px;margin-top:3px" onclick="removerDoCarrinho('${id}')">✕ remover</button>
+      </div>
+    </div>`;
+  };
+
+  let html=`<div class="modal-title" style="margin-bottom:0">
+    <span><i class="fas fa-shopping-cart"></i> Resumo da Produção</span>
+    <button class="btn btn-sm" onclick="closeModal()">✕</button>
+  </div>
+  <div style="font-size:12px;color:var(--text-3);margin-bottom:14px">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</div>`;
+
+  if(comerciais.length){
+    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--blue);margin-bottom:4px">
+      <i class="fas fa-store"></i> Dietas Comerciais (${comerciais.length})
+    </div>`;
+    html+=comerciais.map(renderComItem).join('');
+    html+=`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--blue);font-weight:600;margin-bottom:12px">
+      <span>Subtotal comerciais</span>
+      <span style="font-family:'DM Mono',monospace">${(totalComG/1000).toFixed(2)} kg</span>
+    </div>`;
+  }
+
+  if(personalizadas.length){
+    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--green-dark);margin-bottom:4px;margin-top:${comerciais.length?'4px':'0'}">
+      <i class="fas fa-user-heart"></i> Dietas Personalizadas (${personalizadas.length})
+    </div>`;
+    html+=personalizadas.map(renderPerItem).join('');
+    html+=`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:12px">
+      <span>Subtotal personalizadas</span>
+      <span style="font-family:'DM Mono',monospace">${(totalPerG/1000).toFixed(2)} kg</span>
+    </div>`;
+  }
+
+  html+=`<div style="background:var(--green-light);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div>
+      <div style="font-size:11px;color:var(--green-dark);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total geral</div>
+      <div style="font-size:11px;color:var(--text-2);margin-top:2px">${selIds.length} receita${selIds.length!==1?'s':''} · ${comerciais.length} comercial${comerciais.length!==1?'is':''} · ${personalizadas.length} personalizada${personalizadas.length!==1?'s':''}</div>
+    </div>
+    <div style="font-size:22px;font-weight:700;color:var(--green-dark);font-family:'DM Mono',monospace">${(totalG/1000).toFixed(2)} kg</div>
+  </div>
+  <button class="gen-btn" style="border-radius:10px;width:100%" onclick="closeModal();gerarRelatorio()">
+    <i class="fas fa-file-pdf"></i> Confirmar e Gerar PDF
+  </button>`;
+
+  openModal(html);
+}
+
+function removerDoCarrinho(id){
+  delete state.today.selected[id];
+  closeModal();
+  renderProducao();
+  // reopen if still items
+  setTimeout(()=>{
+    if(Object.keys(state.today.selected).length>0) abrirCarrinho();
+  },100);
 }
 
 function setProdTab(t){state.prodTab=t;renderProducao();}
