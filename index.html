@@ -1103,18 +1103,25 @@ function renderReceitas(){
     const filtered=q?pers.filter(r=>r.dog.toLowerCase().includes(q.toLowerCase())||r.tutor.toLowerCase().includes(q.toLowerCase())):pers;
     if(!filtered.length){html+=`<div class="card"><div class="empty"><i class="fas fa-search"></i><p>Nenhum resultado para "${q}"</p></div></div>`;}
     else{
-      const filtTutors=[...new Set(filtered.map(r=>r.tutor))];
+      const filtTutors=[...new Set(filtered.map(r=>r.tutor))].sort((a,b)=>a.localeCompare(b,'pt'));
       filtTutors.forEach(tutor=>{
         const pets=filtered.filter(r=>r.tutor===tutor);
         const isOpen=state.openTutors[tutor]||!!q;
         html+=`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)">
-          <div onclick="toggleTutor('${tutor.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:var(--green-light)">
-            <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--green-light)">
+            <div onclick="toggleTutor('${tutor.replace(/'/g,"\\'")}');event.stopPropagation()" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer">
               <i class="fas fa-folder${isOpen?'-open':''}" style="color:var(--green-dark);font-size:16px"></i>
               <span style="font-family:'Coolvetica','DM Sans',sans-serif;font-size:16px">${tutor}</span>
               <span class="badge badge-green">${pets.length} pet${pets.length!==1?'s':''}</span>
             </div>
-            <i class="fas fa-chevron-${isOpen?'up':'down'}" style="color:var(--green-dark);font-size:12px"></i>
+            <div style="display:flex;align-items:center;gap:8px">
+              <i class="fas fa-chevron-${isOpen?'up':'down'}" style="color:var(--green-dark);font-size:12px;cursor:pointer" onclick="toggleTutor('${tutor.replace(/'/g,"\\'")}')"></i>
+              <button class="btn btn-icon btn-sm btn-danger" title="Excluir pasta ${tutor}"
+                onclick="deleteTutor('${tutor.replace(/'/g,"\\'")}');event.stopPropagation()"
+                style="padding:4px 8px;font-size:11px">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
           </div>
           ${isOpen?`<div style="padding:10px 12px 12px">`+pets.map(r=>{
             const dk=tutor+'__'+r.dog;
@@ -1204,6 +1211,29 @@ function toggleTutor(tutor){
   if(!state.openTutors) state.openTutors={};
   state.openTutors[tutor]=!state.openTutors[tutor];
   renderReceitas();
+}
+
+function deleteTutor(tutor){
+  const pets=state.db.recipes.filter(r=>r.type==='personalizada'&&r.tutor===tutor);
+  openModal(`<div class="modal-title">Excluir pasta "${tutor}"?</div>
+    <div style="background:var(--red-light);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--red);margin-bottom:16px">
+      <i class="fas fa-exclamation-triangle"></i> Isso vai excluir <strong>todas as ${pets.length} receita${pets.length!==1?'s':''}</strong> de ${tutor} permanentemente. Esta ação não pode ser desfeita.
+    </div>
+    <div style="margin-bottom:16px;font-size:13px;color:var(--text-2)">
+      ${pets.map(r=>`<div style="padding:4px 0;border-bottom:1px solid var(--border)">🐶 ${r.dog} — ${r.cat}</div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteTutor('${tutor.replace(/'/g,"\\'")}')">
+        <i class="fas fa-trash-alt"></i> Sim, excluir tudo
+      </button>
+      <button class="btn btn-full" onclick="closeModal()">Cancelar</button>
+    </div>`);
+}
+
+function confirmDeleteTutor(tutor){
+  state.db.recipes=state.db.recipes.filter(r=>!(r.type==='personalizada'&&r.tutor===tutor));
+  saveData(); closeModal(); renderReceitas();
+  toast(`🗑 Pasta "${tutor}" excluída`);
 }
 function toggleDog(tutor,dog){
   if(!state.openDogs) state.openDogs={};
