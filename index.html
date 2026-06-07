@@ -1033,7 +1033,285 @@ function gerarRelatorio(){
   const totalMP=mp.reduce((a,x)=>a+x.total,0);
   const dateStr=fmtDate(state.today.date);
   const dateShort=fmtDateShort(state.today.date).replace(/\//g,'-');
-  const L=14, W=182;
+  const L=10, R=200, W=190, PW=210, PH=297;
+
+  // helper: cabeçalho de página
+  const pageHeader=()=>{
+    doc.setFillColor(181,205,90);
+    doc.rect(0,0,PW,24,'F');
+    doc.setTextColor(26,29,35);
+    doc.setFontSize(14); doc.setFont('helvetica','bold');
+    doc.text('PetNaturau — Lista de Produção', L, 10);
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text(dateStr, L, 16);
+    doc.text('Data fabricação: ___/___/______', L, 21);
+    doc.text('Lote: ___________________', 110, 21);
+    doc.text(`Pág. ${doc.internal.getNumberOfPages()}`, 190, 10, {align:'right'});
+    doc.setTextColor(26,29,35);
+  };
+
+  // helper: título de seção compacto
+  const secTitle=(y, title, r=L, w=W, color=[181,205,90])=>{
+    doc.setFillColor(...color);
+    doc.rect(r, y, w, 6, 'F');
+    doc.setTextColor(26,29,35);
+    doc.setFontSize(8); doc.setFont('helvetica','bold');
+    doc.text(title, r+2, y+4.2);
+    doc.setTextColor(26,29,35);
+    return y+7;
+  };
+
+  // helper: quadrado de receita (para grade de personalizadas)
+  const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
+    doc.setFillColor(245,250,245);
+    doc.rect(x, y, bw, bh, 'F');
+    doc.setDrawColor(181,205,90);
+    doc.setLineWidth(0.5);
+    doc.rect(x, y, bw, bh, 'S');
+
+    // Header do quadrado
+    doc.setFillColor(181,205,90);
+    doc.rect(x, y, bw, 7, 'F');
+    doc.setTextColor(26,29,35);
+    doc.setFontSize(8); doc.setFont('helvetica','bold');
+    const dogLabel=`${r.dog} — ${r.cat}`;
+    doc.text(dogLabel.length>22?dogLabel.substring(0,21)+'…':dogLabel, x+2, y+4.5);
+    doc.setFontSize(7); doc.setFont('helvetica','normal');
+    doc.text(label, x+bw-2, y+4.5, {align:'right'});
+    doc.setTextColor(26,29,35);
+
+    // Ingredientes em 2 colunas dentro do quadrado
+    const ings=r.ingredients.slice().sort((a,b)=>a.n.localeCompare(b.n,'pt'));
+    const col1=ings.filter((_,i)=>i%2===0);
+    const col2=ings.filter((_,i)=>i%2!==0);
+    const half=bw/2-3;
+    let iy=y+10;
+    const lineH=4.2;
+
+    doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+    col1.forEach((ing,i)=>{
+      if(iy+lineH>y+bh-2) return;
+      const tot=ing.q*mult;
+      const totStr=tot>=1000?(tot/1000).toFixed(2)+'kg':Math.round(tot)+'g';
+      const name=ing.n.length>18?ing.n.substring(0,17)+'…':ing.n;
+      // col esquerda
+      doc.setFont('helvetica','normal'); doc.text(name+(ing.raw?' 🥩':''), x+2, iy);
+      doc.setFont('helvetica','bold'); doc.text(totStr, x+half-1, iy, {align:'right'});
+      // col direita (se existir)
+      if(col2[i]){
+        const ing2=col2[i];
+        const tot2=ing2.q*mult;
+        const tot2Str=tot2>=1000?(tot2/1000).toFixed(2)+'kg':Math.round(tot2)+'g';
+        const name2=ing2.n.length>18?ing2.n.substring(0,17)+'…':ing2.n;
+        doc.setFont('helvetica','normal'); doc.text(name2+(ing2.raw?' 🥩':''), x+half+4, iy);
+        doc.setFont('helvetica','bold'); doc.text(tot2Str, x+bw-2, iy, {align:'right'});
+      }
+      iy+=lineH;
+    });
+
+    // Total no rodapé do quadrado
+    doc.setFillColor(238,244,208);
+    doc.rect(x, y+bh-5, bw, 5, 'F');
+    doc.setFontSize(7); doc.setFont('helvetica','bold');
+    doc.setTextColor(143,163,66);
+    const totalG=mult*(r.pktG||0);
+    doc.text('TOTAL MP:', x+2, y+bh-1.5);
+    const mpStr=r.ingredients.reduce((a,i)=>a+i.q*mult,0);
+    doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+bh-1.5, {align:'right'});
+    doc.setTextColor(26,29,35);
+  };
+
+  // ══════════════════════════════════════
+  // PÁGINA 1 — PEDIDOS DO DIA
+  // ══════════════════════════════════════
+  pageHeader();
+  let y=27;
+
+  // separar comerciais e personalizadas
+  const selArr=Object.values(sel).filter(s=>s.recipe);
+  const selCom=selArr.filter(s=>s.recipe.type==='comercial');
+  const selPer=selArr.filter(s=>s.recipe.type==='personalizada');
+
+  // Resumo pedidos comerciais
+  if(selCom.length){
+    y=secTitle(y,'PEDIDOS — DIETAS COMERCIAIS');
+    const pedRowsCom=selCom.map(s=>{
+      const r=s.recipe;
+      const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+      const pad=[]; if((s.p200||0)>0)pad.push(s.p200+'×200g'); if((s.p500||0)>0)pad.push(s.p500+'×500g');
+      const cust=(s.customs||[]).map(c=>`${c.qty}×${c.g}g – ${c.name}`).join('\n');
+      return [r.name.replace('Dieta Comercial ','')+(r.barf?' [BARF]':''), pad.join(' + ')||'—', cust||'—', (tg/1000).toFixed(2)+' kg'];
+    });
+    doc.autoTable({startY:y,head:[['Receita','Pacotes fixos','Clientes personalizados','Total']],body:pedRowsCom,
+      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+      columnStyles:{0:{cellWidth:40},1:{cellWidth:30},2:{cellWidth:90},3:{cellWidth:30,halign:'right',fontStyle:'bold'}},
+      margin:{left:L,right:10}});
+    y=doc.lastAutoTable.finalY+5;
+  }
+
+  // Resumo pedidos personalizadas
+  if(selPer.length){
+    y=secTitle(y,'PEDIDOS — DIETAS PERSONALIZADAS');
+    const pedRowsPer=selPer.map(s=>{
+      const r=s.recipe;
+      const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
+      const tg=unidades*(r.pktG||0);
+      const emb=r.pkts&&r.pkts!==r.defQty?`${r.pkts} pcts de ${r.pktG}g`:(r.pktG?`${r.pkts||unidades} pcts de ${r.pktG}g`:'—');
+      return [`${r.tutor} — ${r.dog}`, r.cat, `${unidades} unid`, emb, tg>0?(tg/1000).toFixed(2)+' kg':'—'];
+    });
+    doc.autoTable({startY:y,head:[['Tutor / Pet','Sabor','Unidades','Embalagem','MP Total']],body:pedRowsPer,
+      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+      columnStyles:{0:{cellWidth:55},1:{cellWidth:20},2:{cellWidth:20},3:{cellWidth:55},4:{cellWidth:30,halign:'right',fontStyle:'bold'}},
+      margin:{left:L,right:10}});
+    y=doc.lastAutoTable.finalY+5;
+  }
+
+  // Total geral na pág 1
+  const totalG=selArr.reduce((a,s)=>a+totalGofSel(s),0);
+  doc.setFillColor(238,244,208);
+  doc.rect(L,y,W,7,'F');
+  doc.setTextColor(143,163,66); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text(`TOTAL GERAL DE MATÉRIA-PRIMA: ${(totalG/1000).toFixed(2)} kg`, L+2, y+4.8);
+  doc.setTextColor(26,29,35);
+  y+=10;
+
+  // ══════════════════════════════════════
+  // PÁGINAS DE RECEITAS COMERCIAIS
+  // ══════════════════════════════════════
+  if(selCom.length){
+    doc.addPage(); pageHeader(); y=27;
+    y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS');
+
+    selCom.forEach(s=>{
+      const r=s.recipe;
+      const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+      if(!tg) return;
+      const mult=tg/1000;
+      const rows=r.ingredients.slice().sort((a,b)=>a.n.localeCompare(b.n,'pt')).map(ing=>{
+        const tot=ing.q*mult;
+        return [ing.n+(ing.raw?' 🥩':''), tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
+      });
+      // se não cabe na página, nova página
+      const estimH=rows.length*5+14;
+      if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)');}
+      doc.autoTable({startY:y,
+        head:[[{content:`${r.name.replace('Dieta Comercial ','')}${r.barf?' [BARF]':''} — ${mult.toFixed(2)} kg`,colSpan:2,
+          styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:8}}]],
+        body:rows,styles:{fontSize:7.5,cellPadding:1.8},
+        columnStyles:{0:{cellWidth:140},1:{cellWidth:50,halign:'right',fontStyle:'bold'}},
+        margin:{left:L,right:10}});
+      y=doc.lastAutoTable.finalY+4;
+    });
+  }
+
+  // ══════════════════════════════════════
+  // PÁGINAS DE PERSONALIZADAS — por tutor, grade 2×2
+  // ══════════════════════════════════════
+  if(selPer.length){
+    // agrupar por tutor mantendo ordem
+    const tutorMap={};
+    selPer.forEach(s=>{
+      const t=s.recipe.tutor;
+      if(!tutorMap[t]) tutorMap[t]=[];
+      tutorMap[t].push(s);
+    });
+
+    Object.entries(tutorMap).forEach(([tutor,items])=>{
+      // dividir em grupos de 4
+      for(let gi=0;gi<items.length;gi+=4){
+        const grupo=items.slice(gi,gi+4);
+        doc.addPage(); pageHeader(); y=27;
+
+        // título do tutor
+        doc.setFillColor(26,29,35);
+        doc.rect(L,y,W,7,'F');
+        doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+        doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, y+4.8);
+        doc.setTextColor(26,29,35); y+=9;
+
+        // grade 2×2
+        const cols=2;
+        const bw=(W-4)/cols;   // largura de cada quadrado
+        const bh=(PH-y-30)/2;  // altura de cada quadrado (2 linhas, deixa espaço p/ assinatura)
+
+        grupo.forEach((s,i)=>{
+          const r=s.recipe;
+          const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
+          const col=i%cols;
+          const row=Math.floor(i/cols);
+          const bx=L+col*(bw+4);
+          const by=y+row*(bh+3);
+          const emb=r.pkts&&r.pkts!==r.defQty?`${r.pkts}pcts×${r.pktG}g`:(r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
+          drawRecipeBox(bx, by, bw, bh, r, mult, emb);
+        });
+
+        // assinaturas no final de cada página de tutor
+        const sigY=PH-18;
+        doc.setFontSize(7); doc.setFont('helvetica','normal');
+        doc.text('Data fabricação: ___/___/______', L, sigY);
+        doc.line(L, sigY+8, L+80, sigY+8);
+        doc.text('Responsável', L, sigY+11);
+        doc.line(120, sigY+8, R, sigY+8);
+        doc.text('Validação técnica', 120, sigY+11);
+      }
+    });
+  }
+
+  // ══════════════════════════════════════
+  // PÁGINA FINAL — MATÉRIA-PRIMA TOTAL
+  // ══════════════════════════════════════
+  doc.addPage(); pageHeader(); y=27;
+  y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE');
+
+  const mpRows=[];
+  let lastRaw=null;
+  mp.forEach(e=>{
+    if(e.raw!==lastRaw){
+      mpRows.push([{content:e.raw?'🥩 CRUS — separar do fluxo de cozimento':'🔥 COZIDOS — pré-preparo sexta-feira',
+        colSpan:7,styles:{fillColor:e.raw?[253,237,236]:[238,244,208],textColor:e.raw?[192,57,43]:[143,163,66],fontStyle:'bold',fontSize:8}}]);
+      lastRaw=e.raw;
+    }
+    mpRows.push([e.name,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
+  });
+  mpRows.push([{content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
+    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
+    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
+    {content:'',colSpan:3,styles:{fillColor:[238,244,208]}}]);
+
+  doc.autoTable({startY:y,head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],body:mpRows,
+    styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+    columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
+    margin:{left:L,right:10}});
+  y=doc.lastAutoTable.finalY+10;
+
+  if(y<PH-25){
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('Data de fabricação: _____ / _____ / _______',L,y);
+    doc.text('Data: _____ / _____ / _______',130,y); y+=12;
+    doc.line(L,y,L+76,y); doc.line(130,y,R,y); y+=4;
+    doc.setFontSize(7);
+    doc.text('Responsável pelo preenchimento',L,y);
+    doc.text('Validação do responsável técnico',130,y);
+  }
+
+  // SALVAR HISTÓRICO
+  const hist={
+    id:'h'+Date.now(), date:state.today.date, dateStr:fmtDate(state.today.date),
+    recipes:Object.values(sel).map(s=>recName(s.recipe)).filter(Boolean),
+    totalKg:(totalMP/1000).toFixed(2),
+    selected:JSON.parse(JSON.stringify(sel))
+  };
+  if(!state.db.history) state.db.history=[];
+  state.db.history=state.db.history.filter(h=>h.date!==state.today.date);
+  state.db.history.unshift(hist);
+  if(state.db.history.length>90) state.db.history=state.db.history.slice(0,90);
+  saveData();
+
+  doc.save(`petnaturau-${dateShort}.pdf`);
+  toast('📄 PDF gerado! Salvo no histórico.',3500);
+  state.today={selected:{},date:state.today.date};
+  renderProducao();
+}
 
   // HEADER verde
   doc.setFillColor(181,205,90);
