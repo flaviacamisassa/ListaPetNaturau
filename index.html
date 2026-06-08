@@ -999,6 +999,17 @@ function removeCustom(id,idx){
 }
 
 // ── COMPUTE MP ───────────────────────────────────────────
+// normaliza nomes de ingredientes para somatória consistente
+function normalizeName(name){
+  const n = name.toLowerCase().trim();
+  // Abóbora/Moranga → Abóbora Moranga
+  if(n==='moranga'||n==='abóbora'||n==='abobora'||n==='abóbora moranga'||n==='abobora moranga') return 'Abóbora Moranga';
+  // Abobrinha/Abobrinha Italiana → Abobrinha Italiana
+  if(n==='abobrinha'||n==='abobrinha italiana') return 'Abobrinha Italiana';
+  // capitaliza primeira letra de cada palavra
+  return name.trim();
+}
+
 function computeMP(selected){
   const mp={};
   Object.values(selected).forEach(s=>{
@@ -1008,16 +1019,14 @@ function computeMP(selected){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
       mult=tg/1000; // comercial: ingredients per kg, so mult=kg
     } else {
-      // personalizada: ingredients are per unit produced (defQty = days/units cooked)
-      // pkts = number of packages for labeling (may differ, e.g. 2 portions/day = 2x pkts)
-      // The multiplier for ingredients must always be the number of UNITS PRODUCED (defQty)
       mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
     }
     if(!mult) return;
     r.ingredients.forEach(ing=>{
       const raw=ing.raw||false;
-      const k=ing.n.toLowerCase()+'__'+(raw?'cru':'coz');
-      if(!mp[k]) mp[k]={name:ing.n,total:0,raw};
+      const normalName=normalizeName(ing.n);
+      const k=normalName.toLowerCase()+'__'+(raw?'cru':'coz');
+      if(!mp[k]) mp[k]={name:normalName,total:0,raw};
       mp[k].total+=ing.q*mult;
     });
   });
@@ -1258,7 +1267,7 @@ function gerarRelatorio(){
   }
 
   // ══════════════════════════════════════
-  // PÁGINA FINAL — MATÉRIA-PRIMA TOTAL
+  // PÁGINA FINAL — MATÉRIA-PRIMA TOTAL (sempre em página nova, cabe tudo)
   // ══════════════════════════════════════
   doc.addPage(); pageHeader(); y=27;
   y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE');
@@ -1268,7 +1277,7 @@ function gerarRelatorio(){
   mp.forEach(e=>{
     if(e.raw!==lastRaw){
       mpRows.push([{content:e.raw?'🥩 CRUS — separar do fluxo de cozimento':'🔥 COZIDOS — pré-preparo sexta-feira',
-        colSpan:7,styles:{fillColor:e.raw?[253,237,236]:[238,244,208],textColor:e.raw?[192,57,43]:[143,163,66],fontStyle:'bold',fontSize:8}}]);
+        colSpan:7,styles:{fillColor:e.raw?[253,237,236]:[238,244,208],textColor:e.raw?[192,57,43]:[143,163,66],fontStyle:'bold',fontSize:7}}]);
       lastRaw=e.raw;
     }
     mpRows.push([e.name,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
@@ -1278,21 +1287,32 @@ function gerarRelatorio(){
     {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
     {content:'',colSpan:3,styles:{fillColor:[238,244,208]}}]);
 
-  doc.autoTable({startY:y,head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],body:mpRows,
-    styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
-    columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
-    margin:{left:L,right:10}});
-  y=doc.lastAutoTable.finalY+10;
+  // calcula font size dinâmico para caber em uma página
+  const availH = PH - y - 35; // espaço disponível menos assinaturas
+  const rowH = availH / (mpRows.length + 1);
+  const fontSize = Math.min(7.5, Math.max(5.5, rowH * 0.55));
+  const cellPad = Math.min(2, Math.max(1, rowH * 0.2));
 
-  if(y<PH-25){
-    doc.setFontSize(8); doc.setFont('helvetica','normal');
-    doc.text('Data de fabricação: _____ / _____ / _______',L,y);
-    doc.text('Data: _____ / _____ / _______',130,y); y+=12;
-    doc.line(L,y,L+76,y); doc.line(130,y,R,y); y+=4;
-    doc.setFontSize(7);
-    doc.text('Responsável pelo preenchimento',L,y);
-    doc.text('Validação do responsável técnico',130,y);
-  }
+  doc.autoTable({startY:y,
+    head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],
+    body:mpRows,
+    styles:{fontSize,cellPadding:cellPad,overflow:'hidden'},
+    headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:fontSize},
+    columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
+    margin:{left:L,right:10},
+    pageBreak:'avoid'});
+
+  y=doc.lastAutoTable.finalY+8;
+
+  // assinaturas
+  if(y>PH-20){doc.addPage();pageHeader();y=27;}
+  doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text('Data de fabricação: _____ / _____ / _______',L,y);
+  doc.text('Data: _____ / _____ / _______',130,y); y+=12;
+  doc.line(L,y,L+76,y); doc.line(130,y,R,y); y+=4;
+  doc.setFontSize(7);
+  doc.text('Responsável pelo preenchimento',L,y);
+  doc.text('Validação do responsável técnico',130,y);
 
   // SALVAR HISTÓRICO
   const hist={
