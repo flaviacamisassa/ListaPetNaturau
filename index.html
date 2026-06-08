@@ -1084,46 +1084,41 @@ function gerarRelatorio(){
     doc.setTextColor(26,29,35);
     doc.setFontSize(8); doc.setFont('helvetica','bold');
     const dogLabel=`${r.dog} — ${r.cat}`;
-    doc.text(dogLabel.length>22?dogLabel.substring(0,21)+'…':dogLabel, x+2, y+4.5);
+    doc.text(dogLabel.length>26?dogLabel.substring(0,25)+'…':dogLabel, x+2, y+4.5);
     doc.setFontSize(7); doc.setFont('helvetica','normal');
     doc.text(label, x+bw-2, y+4.5, {align:'right'});
     doc.setTextColor(26,29,35);
 
-    // Ingredientes em 2 colunas dentro do quadrado
+    // Ingredientes — coluna única: nome à esquerda, quantidade à direita
     const ings=r.ingredients.slice().sort((a,b)=>a.n.localeCompare(b.n,'pt'));
-    const col1=ings.filter((_,i)=>i%2===0);
-    const col2=ings.filter((_,i)=>i%2!==0);
-    const half=bw/2-3;
-    let iy=y+10;
-    const lineH=4.2;
+    const footerH=5;
+    const availH=bh-7-footerH-2; // altura disponível entre header e footer
+    const lineH=availH/Math.max(ings.length,1);
+    const fontSize=Math.min(7, Math.max(5, lineH*0.65));
+    let iy=y+9;
 
-    doc.setFontSize(6.5); doc.setFont('helvetica','normal');
-    col1.forEach((ing,i)=>{
-      if(iy+lineH>y+bh-2) return;
+    doc.setFontSize(fontSize);
+    ings.forEach(ing=>{
+      if(iy+lineH>y+bh-footerH-1) return;
       const tot=ing.q*mult;
       const totStr=tot>=1000?(tot/1000).toFixed(2)+'kg':Math.round(tot)+'g';
-      const name=ing.n.length>18?ing.n.substring(0,17)+'…':ing.n;
-      // col esquerda
-      doc.setFont('helvetica','normal'); doc.text(name+(ing.raw?' 🥩':''), x+2, iy);
-      doc.setFont('helvetica','bold'); doc.text(totStr, x+half-1, iy, {align:'right'});
-      // col direita (se existir)
-      if(col2[i]){
-        const ing2=col2[i];
-        const tot2=ing2.q*mult;
-        const tot2Str=tot2>=1000?(tot2/1000).toFixed(2)+'kg':Math.round(tot2)+'g';
-        const name2=ing2.n.length>18?ing2.n.substring(0,17)+'…':ing2.n;
-        doc.setFont('helvetica','normal'); doc.text(name2+(ing2.raw?' 🥩':''), x+half+4, iy);
-        doc.setFont('helvetica','bold'); doc.text(tot2Str, x+bw-2, iy, {align:'right'});
-      }
+      const maxChars=Math.floor((bw-18)/fontSize*2.2);
+      const name=normalizeName(ing.n);
+      const displayName=(name.length>maxChars?name.substring(0,maxChars-1)+'…':name)+(ing.raw?' 🥩':'');
+      doc.setFont('helvetica','normal'); doc.text(displayName, x+2, iy);
+      doc.setFont('helvetica','bold'); doc.text(totStr, x+bw-2, iy, {align:'right'});
+      // linha separadora fina
+      doc.setDrawColor(220,235,220); doc.setLineWidth(0.1);
+      doc.line(x+2, iy+1, x+bw-2, iy+1);
+      doc.setDrawColor(181,205,90); doc.setLineWidth(0.5);
       iy+=lineH;
     });
 
     // Total no rodapé do quadrado
     doc.setFillColor(238,244,208);
-    doc.rect(x, y+bh-5, bw, 5, 'F');
+    doc.rect(x, y+bh-footerH, bw, footerH, 'F');
     doc.setFontSize(7); doc.setFont('helvetica','bold');
     doc.setTextColor(143,163,66);
-    const totalG=mult*(r.pktG||0);
     doc.text('TOTAL MP:', x+2, y+bh-1.5);
     const mpStr=r.ingredients.reduce((a,i)=>a+i.q*mult,0);
     doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+bh-1.5, {align:'right'});
