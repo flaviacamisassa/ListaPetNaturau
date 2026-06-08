@@ -1006,6 +1006,8 @@ function normalizeName(name){
   if(n==='moranga'||n==='abóbora'||n==='abobora'||n==='abóbora moranga'||n==='abobora moranga') return 'Abóbora Moranga';
   // Abobrinha/Abobrinha Italiana → Abobrinha Italiana
   if(n==='abobrinha'||n==='abobrinha italiana') return 'Abobrinha Italiana';
+  // Sobrecoxa e variações → Sobrecoxa
+  if(n==='frango/sobrecoxa'||n==='sobrecoxa de frango'||n==='coxa e sobrecoxa'||n==='sobrecoxa'||n==='file de sobrecoxa'||n==='filé de sobrecoxa') return 'Sobrecoxa';
   // capitaliza primeira letra de cada palavra
   return name.trim();
 }
