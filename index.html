@@ -564,8 +564,9 @@ function renderProducao() {
       </div>`;
     }).join('')+`</div>`;
   } else {
-    // PESSOAL — barra de busca + pastas por tutor
+    // PESSOAL — barra de busca + tutores recolhíveis em ordem alfabética
     const pq = state.prodSearch||'';
+    if(!state.openProdTutors) state.openProdTutors={};
     html += `<div style="position:relative;margin-bottom:10px">
       <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px"></i>
       <input type="text" id="prod-search-input" placeholder="Buscar por cachorro ou tutor…" value="${pq}"
@@ -578,20 +579,35 @@ function renderProducao() {
     if(!filteredP.length){
       html+=`<div class="empty"><i class="fas fa-search"></i><p>${pq?`Nenhum resultado para "${pq}"`:'Nenhuma dieta personalizada cadastrada'}</p></div>`;
     } else {
-      const filtTutors=[...new Set(filteredP.map(r=>r.tutor))];
+      const filtTutors=[...new Set(filteredP.map(r=>r.tutor))].sort((a,b)=>a.localeCompare(b,'pt'));
       filtTutors.forEach(tutor=>{
         const pets=filteredP.filter(r=>r.tutor===tutor);
-        html += `<div class="section-label"><i class="fas fa-building" style="font-size:10px"></i> ${tutor}</div>
-          <div class="recipe-grid">`+pets.map(r=>{
-            const isSel=!!sel[r.id];
-            return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
-              <div class="rc-check"><i class="fas fa-check"></i></div>
-              <div class="rc-name">${r.dog}</div>
-              <div class="rc-sub">${r.tutor}</div>
-              <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
-              ${embStr(r)?`<div style="font-size:10px;color:var(--green-dark);margin-top:4px;font-weight:600">📦 ${embStr(r)}</div>`:''}
-            </div>`;
-          }).join('')+`</div>`;
+        const isOpen=state.openProdTutors[tutor]||!!pq;
+        const selCount=pets.filter(r=>!!sel[r.id]).length;
+        html+=`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;overflow:hidden">
+          <div onclick="toggleProdTutor('${tutor.replace(/'/g,"\'")}');event.stopPropagation()"
+            style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;background:${isOpen?'var(--green-light)':'var(--card)'}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <i class="fas fa-folder${isOpen?'-open':''}" style="color:var(--green-dark);font-size:14px"></i>
+              <span style="font-weight:600;font-size:13px">${tutor}</span>
+              <span class="badge badge-gray" style="font-size:10px">${pets.length} pet${pets.length!==1?'s':''}</span>
+              ${selCount>0?`<span class="badge badge-green" style="font-size:10px">${selCount} selecionado${selCount!==1?'s':''}</span>`:''}
+            </div>
+            <i class="fas fa-chevron-${isOpen?'up':'down'}" style="color:var(--green-dark);font-size:11px"></i>
+          </div>
+          ${isOpen?`<div style="padding:10px;background:var(--bg)">
+            <div class="recipe-grid">`+pets.map(r=>{
+              const isSel=!!sel[r.id];
+              return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
+                <div class="rc-check"><i class="fas fa-check"></i></div>
+                <div class="rc-name">${r.dog}</div>
+                <div class="rc-sub">${r.tutor}</div>
+                <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
+                ${embStr(r)?`<div style="font-size:10px;color:var(--green-dark);margin-top:4px;font-weight:600">📦 ${embStr(r)}</div>`:''}
+              </div>`;
+            }).join('')+`</div>
+          </div>`:''}
+        </div>`;
       });
     }
   }
@@ -819,6 +835,12 @@ function totalGofSel(s) {
   return (s.p200||0)*200 + (s.p500||0)*500 + (s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
 }
 
+function toggleProdTutor(tutor){
+  if(!state.openProdTutors) state.openProdTutors={};
+  state.openProdTutors[tutor]=!state.openProdTutors[tutor];
+  renderProducao();
+}
+
 function setProdTab(t){state.prodTab=t;state.prodSearch='';renderProducao();}
 
 function totalGofSel(s) {
@@ -1008,7 +1030,8 @@ function normalizeName(name){
   if(n==='abobrinha'||n==='abobrinha italiana') return 'Abobrinha Italiana';
   // Sobrecoxa e variações → Sobrecoxa
   if(n==='frango/sobrecoxa'||n==='sobrecoxa de frango'||n==='coxa e sobrecoxa'||n==='sobrecoxa'||n==='file de sobrecoxa'||n==='filé de sobrecoxa') return 'Sobrecoxa';
-  // capitaliza primeira letra de cada palavra
+  // Arroz (sem especificação) → Arroz Branco
+  if(n==='arroz') return 'Arroz Branco';
   return name.trim();
 }
 
@@ -1074,11 +1097,10 @@ function gerarRelatorio(){
 
   // helper: quadrado de receita (para grade de personalizadas)
   const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
-    doc.setFillColor(245,250,245);
-    doc.rect(x, y, bw, bh, 'F');
+    // sem preenchimento de fundo — economiza tinta
     doc.setDrawColor(181,205,90);
     doc.setLineWidth(0.5);
-    doc.rect(x, y, bw, bh, 'S');
+    doc.rect(x, y, bw, bh, 'S'); // só borda, sem fill
 
     // Header do quadrado
     doc.setFillColor(181,205,90);
