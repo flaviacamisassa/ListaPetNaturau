@@ -1051,11 +1051,117 @@ function removeCustom(id,idx){
 // ── COMPUTE MP ───────────────────────────────────────────
 // normaliza nomes de ingredientes para somatória consistente
 function normalizeName(name){
-  const n = name.toLowerCase().trim();
-  if(n==='moranga'||n==='abóbora'||n==='abobora'||n==='abóbora moranga'||n==='abobora moranga') return 'Abóbora Moranga';
-  if(n==='abobrinha'||n==='abobrinha italiana') return 'Abobrinha Italiana';
-  if(n==='frango/sobrecoxa'||n==='sobrecoxa de frango'||n==='coxa e sobrecoxa'||n==='sobrecoxa'||n==='file de sobrecoxa'||n==='filé de sobrecoxa') return 'Sobrecoxa';
-  if(n==='arroz') return 'Arroz Branco';
+  const n = name.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos para comparação
+    .replace(/\s+/g,' ');
+
+  // ── MAPA DE ALIASES E ERROS ORTOGRÁFICOS ──────────────────
+  const aliases = [
+    // ABÓBORA / MORANGA
+    {names:['moranga','abobora','abobora moranga','abobora-moranga','aboboro','abobura','moranga cabotia','cabotia'], out:'Abóbora Moranga'},
+    // ABOBRINHA
+    {names:['abobrinha','abobrinha italiana','aboborinha','aborrinha','aborinha','abobrinha italina','abrinha'], out:'Abobrinha Italiana'},
+    // SOBRECOXA
+    {names:['sobrecoxa','frango/sobrecoxa','sobrecoxa de frango','coxa e sobrecoxa','file de sobrecoxa','file sobrecoxa','file de sobrecoxa','sobrecoxa frango','coxa sobrecoxa'], out:'Sobrecoxa'},
+    // ARROZ
+    {names:['arroz'], out:'Arroz Branco'},
+    // SAL — unificar tipos (exceto sal rosa e sal marinho que ficam separados se quiser)
+    {names:['sal','sal refinado','sal iodado','sal comum','sal de cozinha','sal grosso'], out:'Sal'},
+    // CENOURA
+    {names:['cenoura','cenora','cenorra','cenura','cenoura','cenouras'], out:'Cenoura'},
+    // CHUCHU
+    {names:['chuchu','chuho','chucho'], out:'Chuchu'},
+    // BRÓCOLIS
+    {names:['brocolis','brocolis','brocoli','brocóli','brocoles','brocoles'], out:'Brócolis'},
+    // COUVE
+    {names:['couve','cuve','couve manteiga','couve-manteiga'], out:'Couve'},
+    // COUVE-FLOR
+    {names:['couve flor','couve-flor','couveflor','couve-flo'], out:'Couve-flor'},
+    // FÍGADO BOVINO
+    {names:['figado bovino','figado de boi','figado bov','fig bovino','figado bovi','fígado de boi','fígado bovino','figado bov'], out:'Fígado Bovino'},
+    // FÍGADO DE FRANGO
+    {names:['figado de frango','figado frango','fig de frango','fígado de frango'], out:'Fígado de Frango'},
+    // FÍGADO DE PATO
+    {names:['figado de pato','figado pato','fígado de pato'], out:'Fígado de Pato'},
+    // MÚSCULO BOVINO
+    {names:['musculo','musculo bovino','músculo','músculo bovino','musulo','musculo bov'], out:'Músculo'},
+    // CORAÇÃO DE BOI
+    {names:['coracao de boi','coracao boi','coração boi','coracao bovino','coração bovino','coracao'], out:'Coração de Boi'},
+    // CORAÇÃO DE FRANGO
+    {names:['coracao de frango','coracao frango','coração frango','coração de frango'], out:'Coração de Frango'},
+    // BATATA DOCE
+    {names:['batata doce','batata-doce','batata doce roxa','batatadoce'], out:'Batata Doce'},
+    // BATATA INGLESA
+    {names:['batata inglesa','batata-inglesa','batata ing'], out:'Batata Inglesa'},
+    // PEITO DE FRANGO
+    {names:['peito de frango','peito frango'], out:'Peito de Frango'},
+    // PEITO DE PERU
+    {names:['peito de peru','peito peru','peru','peto de peru'], out:'Peito de Peru'},
+    // LOMBO SUÍNO
+    {names:['lombo','lombo suino','lombo suíno'], out:'Lombo Suíno'},
+    // PERNIL SUÍNO
+    {names:['pernil','pernil suino','pernil suíno'], out:'Pernil Suíno'},
+    // TILÁPIA
+    {names:['tilapia','tilápia','tilapa','tilapsia'], out:'Tilápia'},
+    // INHAME
+    {names:['inhame','inghame','inhane'], out:'Inhame'},
+    // CARÁ
+    {names:['cara','cará','cara branco'], out:'Cará'},
+    // BAROA (mandioquinha)
+    {names:['baroa','batata baroa','mandioquinha','barôa','barroa'], out:'Baroa'},
+    // VAGEM
+    {names:['vagem','vagern','vagen'], out:'Vagem'},
+    // ARROZ INTEGRAL
+    {names:['arroz integral','arroz intregral','arroz integrl'], out:'Arroz Integral'},
+    // ARROZ PARBOILIZADO
+    {names:['arroz parboilizado','arroz parbolizado','arroz parboizado'], out:'Arroz Parboilizado'},
+    // ARROZ BRANCO (explícito)
+    {names:['arroz branco'], out:'Arroz Branco'},
+    // AZEITE
+    {names:['azeite','azeite extra virgem','azeite de oliva','azeite extravirgem'], out:'Azeite Extra Virgem'},
+    // ÓLEO DE COCO
+    {names:['oleo de coco','óleo de coco','oleo coco'], out:'Óleo de Coco'},
+    // ÓLEO DE GIRASSOL
+    {names:['oleo de girassol','óleo de girassol','oleo girassol'], out:'Óleo de Girassol'},
+    // ÓLEO DE CANOLA
+    {names:['oleo de canola','óleo de canola','oleo canola'], out:'Óleo de Canola'},
+    // ÓLEO DE SOJA
+    {names:['oleo de soja','óleo de soja'], out:'Óleo de Soja'},
+    // BANHA SUÍNA
+    {names:['banha suina','banha suína','banha','banha de porco'], out:'Banha Suína'},
+    // CÚRCUMA
+    {names:['curcuma','cúrcuma','curcuma em po','açafrão da terra'], out:'Cúrcuma'},
+    // AGRIÃO
+    {names:['agriao','agrião','agrao'], out:'Agrião'},
+    // MANDIOCA
+    {names:['mandioca','aipim','macaxeira'], out:'Mandioca'},
+    // TOMATE
+    {names:['tomate com semente','tomate'], out:'Tomate'},
+    // ESPINAFRE
+    {names:['espinafre','espinafres'], out:'Espinafre'},
+    // BERINJELA
+    {names:['berinjela','berinjelas'], out:'Berinjela'},
+    // PULMÃO
+    {names:['pulmao de boi','pulmão de boi'], out:'Pulmão de Boi'},
+    // LÍNGUA BOVINA
+    {names:['lingua','lingua bovina','língua','língua bovina'], out:'Língua Bovina'},
+    // COTTAGE
+    {names:['cottage','queijo cottage','cottage cheese'], out:'Cottage'},
+    // OVO
+    {names:['ovo','ovo de galinha','ovos','ovo de galinha (90g)'], out:'Ovo'},
+  ];
+
+  // testa cada alias
+  for(const alias of aliases){
+    if(alias.names.includes(n)) return alias.out;
+    // testa também sem acentos nos aliases
+    for(const a of alias.names){
+      const aN=a.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if(aN===n) return alias.out;
+    }
+  }
+
+  // se não encontrou no mapa, retorna o nome original capitalizado corretamente
   return name.trim();
 }
 
