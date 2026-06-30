@@ -1211,6 +1211,21 @@ function computeMP(selected){
   });
 }
 
+// ── CORES DO PDF ─────────────────────────────────────────────
+const COR_PEDIDOS   = [52,152,219];
+const COR_COMERCIAL = [230,126,34];
+const COR_PERSONAL  = [181,205,90];
+const COR_MP        = [192,57,43];
+const BRANCO        = [255,255,255];
+const COR_PEDIDOS_L   = [210,234,248];
+const COR_COMERCIAL_L = [253,224,197];
+const COR_PERSONAL_L  = [238,244,208];
+const COR_MP_L        = [253,220,215];
+const TEXT_PEDIDOS    = [21,98,163];
+const TEXT_COMERCIAL  = [154,78,10];
+const TEXT_PERSONAL   = [143,163,66];
+const TEXT_MP         = [150,30,20];
+
 // ── GERAR PDF ────────────────────────────────────────────
 function gerarRelatorio(){
   const {jsPDF}=window.jspdf;
@@ -1247,13 +1262,6 @@ function gerarRelatorio(){
     doc.setTextColor(26,29,35);
     return y+7;
   };
-
-  // cores por seção
-  const COR_PEDIDOS   = [52,152,219];   // azul
-  const COR_COMERCIAL = [230,126,34];   // laranja
-  const COR_PERSONAL  = [181,205,90];   // verde
-  const COR_MP        = [192,57,43];    // vermelho
-  const BRANCO        = [255,255,255];
 
   // helper: quadrado de receita (para grade de personalizadas)
   const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
@@ -1299,10 +1307,10 @@ function gerarRelatorio(){
     });
 
     // Total no rodapé do quadrado
-    doc.setFillColor(238,244,208);
+    doc.setFillColor(...COR_PERSONAL_L);
     doc.rect(x, y+bh-footerH, bw, footerH, 'F');
     doc.setFontSize(7); doc.setFont('helvetica','bold');
-    doc.setTextColor(143,163,66);
+    doc.setTextColor(...TEXT_PERSONAL);
     doc.text('TOTAL MP:', x+2, y+bh-1.5);
     const mpStr=r.ingredients.reduce((a,i)=>a+i.q*mult,0);
     doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+bh-1.5, {align:'right'});
@@ -1343,7 +1351,7 @@ function gerarRelatorio(){
       return [r.name.replace('Dieta Comercial ','')+(r.barf?' [BARF]':''), pad.join(' + ')||'—', cust||'—', (tg/1000).toFixed(2)+' kg'];
     });
     doc.autoTable({startY:y,head:[['Receita','Pacotes fixos','Clientes personalizados','Total']],body:pedRowsCom,
-      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:COR_PEDIDOS_L,textColor:TEXT_PEDIDOS,fontStyle:'bold',fontSize:8},
       columnStyles:{0:{cellWidth:40},1:{cellWidth:30},2:{cellWidth:90},3:{cellWidth:30,halign:'right',fontStyle:'bold'}},
       margin:{left:L,right:10}});
     y=doc.lastAutoTable.finalY+5;
@@ -1360,7 +1368,7 @@ function gerarRelatorio(){
       return [`${r.tutor} — ${r.dog}`, r.cat, `${unidades} unid`, emb, tg>0?(tg/1000).toFixed(2)+' kg':'—'];
     });
     doc.autoTable({startY:y,head:[['Tutor / Pet','Sabor','Unidades','Embalagem','MP Total']],body:pedRowsPer,
-      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+      styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:COR_PEDIDOS_L,textColor:TEXT_PEDIDOS,fontStyle:'bold',fontSize:8},
       columnStyles:{0:{cellWidth:55},1:{cellWidth:20},2:{cellWidth:20},3:{cellWidth:55},4:{cellWidth:30,halign:'right',fontStyle:'bold'}},
       margin:{left:L,right:10}});
     y=doc.lastAutoTable.finalY+5;
@@ -1368,9 +1376,9 @@ function gerarRelatorio(){
 
   // Total geral na pág 1
   const totalG=selArr.reduce((a,s)=>a+totalGofSel(s),0);
-  doc.setFillColor(238,244,208);
+  doc.setFillColor(...COR_PEDIDOS_L);
   doc.rect(L,y,W,7,'F');
-  doc.setTextColor(143,163,66); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.setTextColor(...TEXT_PEDIDOS); doc.setFontSize(9); doc.setFont('helvetica','bold');
   doc.text(`TOTAL GERAL DE MATÉRIA-PRIMA: ${(totalG/1000).toFixed(2)} kg`, L+2, y+4.8);
   doc.setTextColor(26,29,35);
   y+=10;
@@ -1396,7 +1404,7 @@ function gerarRelatorio(){
       if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)',L,W,COR_COMERCIAL,BRANCO);}
       doc.autoTable({startY:y,
         head:[[{content:`${r.name.replace('Dieta Comercial ','')}${r.barf?' [BARF]':''} — ${mult.toFixed(2)} kg`,colSpan:2,
-          styles:{fillColor:COR_COMERCIAL,textColor:BRANCO,fontStyle:'bold',fontSize:8}}]],
+          styles:{fillColor:COR_COMERCIAL_L,textColor:TEXT_COMERCIAL,fontStyle:'bold',fontSize:8}}]],
         body:rows,styles:{fontSize:7.5,cellPadding:1.8},
         columnStyles:{0:{cellWidth:140},1:{cellWidth:50,halign:'right',fontStyle:'bold'}},
         margin:{left:L,right:10}});
@@ -1432,9 +1440,9 @@ function gerarRelatorio(){
         doc.addPage(); pageHeader(); y=27;
 
         // título do tutor
-        doc.setFillColor(26,29,35);
+        doc.setFillColor(...COR_PERSONAL);
         doc.rect(L,y,W,7,'F');
-        doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+        doc.setTextColor(...BRANCO); doc.setFontSize(9); doc.setFont('helvetica','bold');
         doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, y+4.8);
         doc.setTextColor(26,29,35); y+=9;
 
@@ -1492,10 +1500,10 @@ function gerarRelatorio(){
     mpRows.push([e.name,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
   });
   mpRows.push([
-    {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
-    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
-    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
-    {content:'',colSpan:3,styles:{fillColor:[253,237,236]}}
+    {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
+    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
+    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
+    {content:'',colSpan:3,styles:{fillColor:COR_MP_L}}
   ]);
 
   // calcula font size dinâmico para caber em uma página
@@ -1508,7 +1516,7 @@ function gerarRelatorio(){
     head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],
     body:mpRows,
     styles:{fontSize,cellPadding:cellPad,overflow:'hidden'},
-    headStyles:{fillColor:COR_MP,textColor:BRANCO,fontStyle:'bold',fontSize:fontSize},
+    headStyles:{fillColor:COR_MP_L,textColor:TEXT_MP,fontStyle:'bold',fontSize:fontSize},
     columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
     margin:{left:L,right:10},
     pageBreak:'avoid'});
@@ -2485,7 +2493,7 @@ function gerarRelatorioPeriodo(){
   doc.autoTable({
     startY:y, head:[head], body,
     styles:{fontSize:8,cellPadding:2.5,halign:'center'},
-    headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+    headStyles:{fillColor:COR_PERSONAL_L,textColor:TEXT_PERSONAL,fontStyle:'bold',fontSize:8},
     columnStyles:{0:{halign:'left',fontStyle:'bold',cellWidth:25}},
     margin:{left:L,right:10},
     didDrawPage:(data)=>{
