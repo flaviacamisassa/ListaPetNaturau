@@ -53,8 +53,8 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
 
 .content { flex: 1; overflow-y: auto; padding: 14px; padding-bottom: 84px; }
 .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; background: var(--card); border-top: 2px solid var(--green); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,.08); }
-.nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 4px 13px; cursor: pointer; border: none; background: none; color: var(--text-3); font-size: 10px; font-family: 'DM Sans', sans-serif; transition: color .15s; }
-.nav-btn i { font-size: 20px; }
+.nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 2px 12px; cursor: pointer; border: none; background: none; color: var(--text-3); font-size: 9px; font-family: 'DM Sans', sans-serif; transition: color .15s; }
+.nav-btn i { font-size: 17px; }
 .nav-btn.active { color: var(--green-dark); }
 .nav-btn.active i { color: var(--green-dark); }
 
@@ -223,8 +223,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); bac
     <button class="nav-btn" id="nav-receitas" onclick="navigate('receitas')">
       <i class="fas fa-book-open"></i>Receitas
     </button>
+    <button class="nav-btn" id="nav-petiscos" onclick="navigate('petiscos')">
+      <i class="fas fa-bone"></i>Petiscos
+    </button>
     <button class="nav-btn" id="nav-historico" onclick="navigate('historico')">
       <i class="fas fa-history"></i>Histórico
+    </button>
+    <button class="nav-btn" id="nav-relatorio" onclick="navigate('relatorio')">
+      <i class="fas fa-file-invoice"></i>Relatório
     </button>
   </nav>
 </div>
@@ -311,7 +317,14 @@ function defaultDB() {
       {id:'r20',type:'personalizada',tutor:'Mayara',dog:'Mel',cat:'Frango',temp:85,defQty:15,pkts:15,pktG:140.3,ingredients:[I('Frango',56),I('Moela',14),I('Fígado Bovino',14),I('Chuchu',15),I('Abobrinha',15),I('Couve-flor',12),I('Batata Doce',14),I('Azeite',1.5),I('Sal',0.3),I('Food Dog Fit Fibras',1.5)]},
       {id:'r21',type:'personalizada',tutor:'Mayara',dog:'Mel',cat:'Boi',temp:85,defQty:15,pkts:15,pktG:143.3,ingredients:[I('Patinho',49),I('Baroa',25),I('Cará',21),I('Cenoura',26),I('Brócolis',10),I('Fígado Bovino',7),I('Nutroplus Manutenção',0.8),I('Azeite',1),I('Sal',0.5)]},
     ],
-    history: []
+    history: [],
+    petiscosHistory: [],
+    petiscosItems: {
+      petiscos: ['Petisco de Frango','Petisco de Boi','Petisco de Porco','Petisco Peito de Pato','Training Bites Frango','Training Bites Peru'],
+      caldos: ['Caldo de Boi','Caldo de Frango','Caldo de Porco','Caldo de Pato'],
+      saborizantes: ['Saborizante Pulmão de Boi','Saborizante Fígado de Boi','Saborizante Pulmão de Porco','Saborizante Fígado de Pato'],
+      nutrally: []
+    }
   };
 }
 
@@ -394,6 +407,7 @@ async function loadData() {
   if (state.driveToken === 'local') {
     const raw = localStorage.getItem('petnaturau-db');
     state.db = raw ? JSON.parse(raw) : defaultDB();
+    ensureDbShape();
     render(); return;
   }
   toast('🔄 Carregando dados do Drive…', 4000);
@@ -421,7 +435,18 @@ async function loadData() {
     state.db = raw ? JSON.parse(raw) : defaultDB();
     toast('⚠️ Drive indisponível, usando dados locais');
   }
+  ensureDbShape();
   render();
+}
+
+function ensureDbShape(){
+  if(!state.db) return;
+  if(!state.db.history) state.db.history=[];
+  if(!state.db.petiscosHistory) state.db.petiscosHistory=[];
+  if(!state.db.petiscosItems) state.db.petiscosItems={petiscos:[],caldos:[],saborizantes:[],nutrally:[]};
+  ['petiscos','caldos','saborizantes','nutrally'].forEach(k=>{
+    if(!state.db.petiscosItems[k]) state.db.petiscosItems[k]=[];
+  });
 }
 
 async function saveData() {
@@ -464,7 +489,9 @@ function render() {
   if (!state.db) { renderNoData(); return; }
   if (state.page==='producao') renderProducao();
   else if (state.page==='receitas') renderReceitas();
+  else if (state.page==='petiscos') renderPetiscos();
   else if (state.page==='historico') renderHistorico();
+  else if (state.page==='relatorio') renderRelatorio();
 }
 
 function renderNoData() {
@@ -1780,9 +1807,13 @@ function confirmDelete(id){
 // ── HISTÓRICO ─────────────────────────────────────────────
 function renderHistorico(){
   const history=state.db.history||[];
+  const petHistory=state.db.petiscosHistory||[];
   let html=`<div class="card-title" style="margin-bottom:14px;font-family:'Coolvetica','DM Sans',sans-serif;font-size:18px">Histórico de Produções</div>`;
+
+  // ── COLUNA 1: RECEITAS ──
+  html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--green-dark);margin-bottom:8px"><i class="fas fa-clipboard-list"></i> Produção de Receitas</div>`;
   if(!history.length){
-    html+=`<div class="empty"><i class="fas fa-history"></i><p>Nenhuma produção registrada ainda.<br>Gere o primeiro relatório na aba Produção!</p></div>`;
+    html+=`<div class="empty"><i class="fas fa-history"></i><p>Nenhuma produção registrada ainda.</p></div>`;
   } else {
     html+=history.map(h=>`<div class="history-item">
       <div onclick="viewHistDetail('${h.id}')" style="flex:1;cursor:pointer">
@@ -1801,6 +1832,33 @@ function renderHistorico(){
         </div>
       </div>
     </div>`).join('');
+  }
+
+  // ── COLUNA 2: PETISCOS & MASTIGÁVEIS ──
+  html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--amber);margin:20px 0 8px"><i class="fas fa-bone"></i> Produção de Petiscos & Mastigáveis</div>`;
+  if(!petHistory.length){
+    html+=`<div class="empty"><i class="fas fa-bone"></i><p>Nenhuma produção de petiscos registrada ainda.</p></div>`;
+  } else {
+    // agrupar por data
+    const byDate={};
+    petHistory.forEach(p=>{
+      if(!byDate[p.date]) byDate[p.date]=[];
+      byDate[p.date].push(p);
+    });
+    const dates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+    html+=dates.map(date=>{
+      const items=byDate[date];
+      const totalKg=items.reduce((a,i)=>a+(i.kg||0),0);
+      return `<div class="history-item" style="cursor:default">
+        <div style="flex:1">
+          <div class="hi-date">${fmtDate(date)}</div>
+          <div class="hi-meta">${items.map(i=>`${i.item} (${i.kg}kg)`).join(' · ')}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="hi-kg" style="color:var(--amber)">${totalKg.toFixed(2)} kg</div>
+        </div>
+      </div>`;
+    }).join('');
   }
   document.getElementById('content').innerHTML=html;
 }
@@ -1858,6 +1916,258 @@ function viewHistDetail(id){
     </div>`);
 }
 
+// ── PETISCOS & MASTIGÁVEIS ──────────────────────────────────
+const PETISCO_TABS=[
+  {key:'petiscos',label:'Petiscos',icon:'fa-drumstick-bite',color:'var(--amber)'},
+  {key:'caldos',label:'Caldos',icon:'fa-mug-hot',color:'var(--blue)'},
+  {key:'saborizantes',label:'Saborizantes',icon:'fa-tint',color:'var(--green-dark)'},
+  {key:'nutrally',label:'Nutrally',icon:'fa-leaf',color:'var(--red)'}
+];
+
+function renderPetiscos(){
+  if(!state.petiscosTab) state.petiscosTab='petiscos';
+  const tab=state.petiscosTab;
+  const items=state.db.petiscosItems?.[tab]||[];
+
+  let html=`<div class="tabs">`+PETISCO_TABS.map(t=>
+    `<button class="tab-btn ${tab===t.key?'active':''}" onclick="setPetiscosTab('${t.key}')">
+      <i class="fas ${t.icon}" style="font-size:11px;margin-right:3px"></i>${t.label}
+    </button>`).join('')+`</div>`;
+
+  if(!items.length){
+    html+=`<div class="empty"><i class="fas fa-box-open"></i><p>Nenhum item cadastrado em ${PETISCO_TABS.find(t=>t.key===tab).label}</p></div>`;
+  } else {
+    html+=items.map((item,idx)=>{
+      const today=state.petiscosToday?.[tab]?.[idx]||{};
+      return `<div class="pkt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="pkt-name" style="margin:0">${item}</div>
+          <button class="btn btn-icon btn-sm btn-danger" onclick="deletePetiscoItem('${tab}',${idx})"><i class="fas fa-trash-alt"></i></button>
+        </div>
+        <div class="row2">
+          <div class="field" style="margin-bottom:0">
+            <label>Data de produção</label>
+            <input type="date" value="${today.date||state.today.date}" onchange="setPetiscoField('${tab}',${idx},'date',this.value)">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Peso produzido (kg)</label>
+            <input type="number" min="0" step="0.01" placeholder="0.00" value="${today.kg||''}" oninput="setPetiscoField('${tab}',${idx},'kg',this.value)">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="savePetiscoEntry('${tab}',${idx})">
+          <i class="fas fa-save"></i> Salvar Produção
+        </button>
+      </div>`;
+    }).join('');
+  }
+
+  html+=`<div class="card" style="margin-top:14px">
+    <div class="card-header"><span class="card-title">+ Adicionar novo item</span></div>
+    <div class="field" style="margin-bottom:10px">
+      <input type="text" id="new-petisco-name" placeholder="Nome do item (ex: Petisco de Carneiro)">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="addPetiscoItem('${tab}')"><i class="fas fa-plus"></i> Adicionar</button>
+  </div>`;
+
+  document.getElementById('content').innerHTML=html;
+}
+
+function setPetiscosTab(tab){
+  state.petiscosTab=tab;
+  renderPetiscos();
+}
+
+function setPetiscoField(tab, idx, field, val){
+  if(!state.petiscosToday) state.petiscosToday={};
+  if(!state.petiscosToday[tab]) state.petiscosToday[tab]={};
+  if(!state.petiscosToday[tab][idx]) state.petiscosToday[tab][idx]={};
+  state.petiscosToday[tab][idx][field]=field==='kg'?parseFloat(val)||0:val;
+}
+
+function savePetiscoEntry(tab, idx){
+  const item=state.db.petiscosItems[tab][idx];
+  const today=state.petiscosToday?.[tab]?.[idx]||{};
+  const date=today.date||state.today.date;
+  const kg=today.kg||0;
+  if(!kg||kg<=0){toast('⚠️ Informe o peso produzido');return;}
+
+  if(!state.db.petiscosHistory) state.db.petiscosHistory=[];
+  // remove entrada anterior do mesmo item+data para evitar duplicar
+  state.db.petiscosHistory=state.db.petiscosHistory.filter(p=>!(p.item===item&&p.date===date&&p.category===tab));
+  state.db.petiscosHistory.push({
+    id:'p'+Date.now()+Math.random().toString(36).slice(2,6),
+    category:tab, item, date, kg,
+    savedAt:new Date().toLocaleString('pt-BR')
+  });
+  saveData();
+  toast(`✅ ${item} — ${kg}kg em ${fmtDateShort(date)} salvo!`);
+  // limpa o campo
+  if(state.petiscosToday?.[tab]) delete state.petiscosToday[tab][idx];
+  renderPetiscos();
+}
+
+function addPetiscoItem(tab){
+  const name=document.getElementById('new-petisco-name')?.value.trim();
+  if(!name){toast('⚠️ Informe o nome do item');return;}
+  if(!state.db.petiscosItems[tab]) state.db.petiscosItems[tab]=[];
+  if(state.db.petiscosItems[tab].includes(name)){toast('⚠️ Item já cadastrado');return;}
+  state.db.petiscosItems[tab].push(name);
+  saveData(); renderPetiscos();
+  toast(`✅ "${name}" adicionado!`);
+}
+
+function deletePetiscoItem(tab, idx){
+  const item=state.db.petiscosItems[tab][idx];
+  openModal(`<div class="modal-title">Excluir item?</div>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:20px">Remover <strong>"${item}"</strong> da lista de ${PETISCO_TABS.find(t=>t.key===tab).label}? O histórico de produções já salvas não será afetado.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-full" onclick="confirmDeletePetiscoItem('${tab}',${idx})">Sim, excluir</button>
+      <button class="btn btn-full" onclick="closeModal()">Cancelar</button>
+    </div>`);
+}
+
+function confirmDeletePetiscoItem(tab, idx){
+  state.db.petiscosItems[tab].splice(idx,1);
+  saveData(); closeModal(); renderPetiscos();
+  toast('🗑 Item excluído');
+}
+
+// ── RELATÓRIO DE PRODUÇÃO POR PERÍODO ────────────────────────
+function renderRelatorio(){
+  if(!state.relPeriodo) state.relPeriodo={de:todayStr(),ate:todayStr()};
+  const html=`<div class="card-title" style="margin-bottom:14px;font-family:'Coolvetica','DM Sans',sans-serif;font-size:18px">Relatório de Produção</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title"><i class="fas fa-calendar-alt"></i> Selecione o período</span></div>
+      <div class="row2">
+        <div class="field">
+          <label>De</label>
+          <input type="date" id="rel-de" value="${state.relPeriodo.de}" onchange="state.relPeriodo.de=this.value">
+        </div>
+        <div class="field">
+          <label>Até</label>
+          <input type="date" id="rel-ate" value="${state.relPeriodo.ate}" onchange="state.relPeriodo.ate=this.value">
+        </div>
+      </div>
+      <button class="gen-btn" style="border-radius:10px;width:100%;margin-top:8px" onclick="gerarRelatorioPeriodo()">
+        <i class="fas fa-file-pdf"></i> Gerar Relatório de Produção por Período
+      </button>
+    </div>
+    <div class="card" style="margin-top:14px;background:var(--bg)">
+      <div style="font-size:12px;color:var(--text-2);line-height:1.6">
+        <i class="fas fa-info-circle" style="color:var(--blue)"></i> Este relatório reúne o total produzido por dia — somando receitas e petiscos/mastigáveis — em uma tabela única, ideal para apresentação a fiscais do Ministério da Agricultura.
+      </div>
+    </div>`;
+  document.getElementById('content').innerHTML=html;
+}
+
+function mesExtenso(m){
+  return ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][m-1].toUpperCase();
+}
+
+function gerarRelatorioPeriodo(){
+  const de=document.getElementById('rel-de')?.value||state.relPeriodo.de;
+  const ate=document.getElementById('rel-ate')?.value||state.relPeriodo.ate;
+  if(!de||!ate){toast('⚠️ Selecione o período');return;}
+  if(de>ate){toast('⚠️ Data inicial deve ser anterior à final');return;}
+
+  // coleta todos os dias do período com produção (receitas ou petiscos)
+  const history=(state.db.history||[]).filter(h=>h.date>=de&&h.date<=ate);
+  const petHistory=(state.db.petiscosHistory||[]).filter(p=>p.date>=de&&p.date<=ate);
+
+  // monta set de todas as colunas de petiscos/caldos/saborizantes que aparecem no período
+  const itemCols=[...new Set(petHistory.map(p=>p.item))].sort((a,b)=>a.localeCompare(b,'pt'));
+
+  // monta mapa data -> {receitas: kg, [item]: kg}
+  const dateMap={};
+  history.forEach(h=>{
+    if(!dateMap[h.date]) dateMap[h.date]={};
+    dateMap[h.date]['__receitas']=(dateMap[h.date]['__receitas']||0)+parseFloat(h.totalKg||0);
+  });
+  petHistory.forEach(p=>{
+    if(!dateMap[p.date]) dateMap[p.date]={};
+    dateMap[p.date][p.item]=(dateMap[p.date][p.item]||0)+p.kg;
+  });
+
+  const dates=Object.keys(dateMap).sort();
+  if(!dates.length){toast('⚠️ Nenhuma produção encontrada nesse período');return;}
+
+  // ── GERAR PDF (paisagem) ──
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const PW=297, PH=210, L=10, R=287;
+
+  // cabeçalho
+  doc.setFillColor(181,205,90);
+  doc.rect(0,0,PW,22,'F');
+  doc.setTextColor(26,29,35);
+  doc.setFontSize(16); doc.setFont('helvetica','bold');
+  doc.text('Relatório de Produção PetNaturau', L, 10);
+
+  const [dY,dM,dD]=de.split('-');
+  const [aY,aM,aD]=ate.split('-');
+  const periodoStr=`De ${parseInt(dD)} de ${mesExtenso(parseInt(dM))} de ${dY} até ${parseInt(aD)} de ${mesExtenso(parseInt(aM))} de ${aY}`;
+  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  doc.text(periodoStr, L, 17);
+  doc.setTextColor(26,29,35);
+
+  let y=28;
+  doc.setFontSize(9);
+  doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, R, 17, {align:'right'});
+
+  // monta tabela
+  const head=['Data','Receitas (kg)',...itemCols.map(c=>c+' (kg)'),'TOTAL (kg)'];
+  const body=dates.map(date=>{
+    const row=dateMap[date];
+    const receitasKg=row['__receitas']||0;
+    const cols=itemCols.map(c=>row[c]?row[c].toFixed(2):'—');
+    const totalDia=receitasKg+itemCols.reduce((a,c)=>a+(row[c]||0),0);
+    return [fmtDateShort(date), receitasKg>0?receitasKg.toFixed(2):'—', ...cols, totalDia.toFixed(2)];
+  });
+
+  // linha de totais
+  const totalReceitas=dates.reduce((a,d)=>a+(dateMap[d]['__receitas']||0),0);
+  const totalPorItem=itemCols.map(c=>dates.reduce((a,d)=>a+(dateMap[d][c]||0),0));
+  const totalGeral=totalReceitas+totalPorItem.reduce((a,v)=>a+v,0);
+  body.push([
+    {content:'TOTAL DO PERÍODO',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
+    {content:totalReceitas.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
+    ...totalPorItem.map(v=>({content:v.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}})),
+    {content:totalGeral.toFixed(2),styles:{fontStyle:'bold',fillColor:[181,205,90],textColor:[26,29,35]}}
+  ]);
+
+  doc.autoTable({
+    startY:y, head:[head], body,
+    styles:{fontSize:8,cellPadding:2.5,halign:'center'},
+    headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+    columnStyles:{0:{halign:'left',fontStyle:'bold',cellWidth:25}},
+    margin:{left:L,right:10},
+    didDrawPage:(data)=>{
+      // rodapé com número de página
+      doc.setFontSize(7); doc.setTextColor(150,150,150);
+      doc.text(`Página ${doc.internal.getNumberOfPages()}`, PW-15, PH-6);
+      doc.setTextColor(26,29,35);
+    }
+  });
+
+  y=doc.lastAutoTable.finalY+10;
+
+  // assinatura final
+  if(y<PH-20){
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('Responsável técnico: ____________________________________', L, y);
+    doc.text('Data de emissão: _____ / _____ / _______', 200, y);
+    y+=10;
+    doc.setFontSize(7); doc.setTextColor(120,120,120);
+    doc.text('PetNaturau — Controle de Produção e Rastreabilidade — RE002/POP5-POP9', L, y);
+    doc.setTextColor(26,29,35);
+  }
+
+  const deShort=fmtDateShort(de).replace(/\//g,'-');
+  const ateShort=fmtDateShort(ate).replace(/\//g,'-');
+  doc.save(`relatorio-producao-${deShort}_a_${ateShort}.pdf`);
+  toast('📄 Relatório gerado com sucesso!');
+}
+
 // ── INIT ──────────────────────────────────────────────────
 const gotToken = checkAuthCallback();
 if (gotToken) {
@@ -1869,6 +2179,7 @@ if (gotToken) {
     document.getElementById('auth-btn').className = 'auth-btn connected';
     document.getElementById('auth-label').textContent = 'Local ✓';
     state.db = JSON.parse(raw);
+    ensureDbShape();
     render();
   } else {
     render(); // mostra tela de boas-vindas
