@@ -2101,14 +2101,22 @@ function viewHistDetail(id){
   const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
   const mp=computeMP(h.selected||{});
   const totalMP=mp.reduce((a,x)=>a+x.total,0);
+
+  // monta lista de receitas com sabor incluído
+  const receitasComSabor=Object.values(h.selected||{}).map(s=>{
+    const r=s.recipe; if(!r) return null;
+    if(r.type==='personalizada') return `${r.tutor} — ${r.dog} — ${r.cat}`;
+    return r.name+(r.barf?' [BARF]':'');
+  }).filter(Boolean);
+
   openModal(`<div class="modal-title">${h.dateStr||h.date} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
     <div class="stats-row">
-      <div class="stat-box"><div class="stat-val">${(h.recipes||[]).length}</div><div class="stat-lbl">Receitas</div></div>
+      <div class="stat-box"><div class="stat-val">${receitasComSabor.length}</div><div class="stat-lbl">Receitas</div></div>
       <div class="stat-box"><div class="stat-val">${h.totalKg}</div><div class="stat-lbl">kg total</div></div>
       <div class="stat-box"><div class="stat-val">${mp.length}</div><div class="stat-lbl">Ingredientes</div></div>
     </div>
     <div class="section-label">Receitas produzidas</div>
-    ${(h.recipes||[]).map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">${n}</div>`).join('')}
+    ${receitasComSabor.map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">${n}</div>`).join('')}
     <div class="section-label" style="margin-top:14px">Matéria-prima utilizada</div>
     ${mp.map(e=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
       <span>${e.name}${e.raw?' 🥩':''}</span>
@@ -2116,7 +2124,37 @@ function viewHistDetail(id){
     </div>`).join('')}
     <div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:700;font-size:14px;color:var(--green-dark);border-top:2px solid var(--green)">
       <span>TOTAL</span><span style="font-family:'DM Mono',monospace">${(totalMP/1000).toFixed(3)} kg</span>
-    </div>`);
+    </div>
+    <button class="gen-btn" style="border-radius:10px;width:100%;margin-top:12px" onclick="closeModal();regenarPDFHist('${id}')">
+      <i class="fas fa-file-pdf"></i> Ver PDF desta produção
+    </button>`);
+}
+
+function regenarPDFHist(id){
+  const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
+  // carrega a seleção salva e gera o PDF sem alterar o estado atual
+  const selBackup=JSON.parse(JSON.stringify(state.today.selected));
+  const dateBackup=state.today.date;
+  state.today.selected=JSON.parse(JSON.stringify(h.selected||{}));
+  // garante que cada seleção tem a receita atualizada do db
+  Object.keys(state.today.selected).forEach(rid=>{
+    const r=state.db.recipes.find(x=>x.id===rid);
+    if(r) state.today.selected[rid].recipe=r;
+    else delete state.today.selected[rid];
+  });
+  state.today.date=h.date;
+  gerarRelatorio();
+  // restaura o estado atual após gerar (gerarRelatorio reseta selected)
+  setTimeout(()=>{
+    state.today.selected=selBackup;
+    state.today.date=dateBackup;
+    // remove o registro duplicado que gerarRelatorio adicionou
+    state.db.history=state.db.history.filter(x=>x.id!==id||x.id===id);
+    // garante que o histórico original volta
+    if(!state.db.history.find(x=>x.id===id)){
+      state.db.history.unshift(h);
+    }
+  },500);
 }
 
 // ── PETISCOS & MASTIGÁVEIS ──────────────────────────────────
