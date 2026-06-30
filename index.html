@@ -1052,25 +1052,37 @@ function removeCustom(id,idx){
 // normaliza nomes de ingredientes para somatória consistente
 function normalizeName(name){
   const n = name.toLowerCase().trim();
-  // Abóbora/Moranga → Abóbora Moranga
   if(n==='moranga'||n==='abóbora'||n==='abobora'||n==='abóbora moranga'||n==='abobora moranga') return 'Abóbora Moranga';
-  // Abobrinha/Abobrinha Italiana → Abobrinha Italiana
   if(n==='abobrinha'||n==='abobrinha italiana') return 'Abobrinha Italiana';
-  // Sobrecoxa e variações → Sobrecoxa
   if(n==='frango/sobrecoxa'||n==='sobrecoxa de frango'||n==='coxa e sobrecoxa'||n==='sobrecoxa'||n==='file de sobrecoxa'||n==='filé de sobrecoxa') return 'Sobrecoxa';
-  // Arroz (sem especificação) → Arroz Branco
   if(n==='arroz') return 'Arroz Branco';
   return name.trim();
+}
+
+// Categorias para tabela de MP
+const PROTEINAS_KEYWORDS=['frango','sobrecoxa','peito de frango','pato','patinho','moela','coração','musculo','músculo','acém','acem','patinho','tilapia','tilápia','pernil','lombo','peru','boi','bovino','suino','suíno','fígado','figado','língua','lingua','bucho','coração','moela','ricota','cottage','ovo','clara','carne','filé','file','peito','músculo','músculo bovino','músculo bovino'];
+const PROTEINAS_EXACT=['sobrecoxa','frango','tilápia','patinho','músculo','músculo bovino','acém moído','pernil suíno','lombo suíno','filé mignon suíno','peito de frango','peito de peru','coração de boi','coração de frango','coração bovino','fígado bovino','fígado de frango','fígado de boi','fígado de pato','moela de pato','moela','língua bovina','língua','bucho bovino','ovo','ovo de galinha','ricota','cottage','carne'];
+
+function categorizaIngrediente(name){
+  const n=normalizeName(name).toLowerCase();
+  // PROTEÍNAS: carnes, vísceras, ovos, ricota, cottage
+  const protTerms=['frango','sobrecoxa','patinho','pato','tilápia','tilapia','músculo','musculo','acém','acem','pernil','lombo','peru','fígado','figado','língua','lingua','bucho','coração','coracao','moela','ovo','ricota','cottage','carne','filé','file','peito de frango','peito de peru','músculo bovino'];
+  if(protTerms.some(t=>n.includes(t))) return 'proteina';
+  // VEGETAIS/LEGUMES
+  const vegTerms=['cenoura','chuchu','abobrinha','abóbora','moranga','brócolis','brocolis','couve','batata','baroa','inhame','cará','cara','vagem','espinafre','tomate','berinjela','agrião','agrao','couve-flor','couve flor','beterraba','pepino','pimentão','repolho','mandioca','arroz','aveia','lentilha','grão','grao','ervilha','vagem','milho','feijão','feijao'];
+  if(vegTerms.some(t=>n.includes(t))) return 'vegetal';
+  // tudo mais = suplemento/complemento
+  return 'suplemento';
 }
 
 function computeMP(selected){
   const mp={};
   Object.values(selected).forEach(s=>{
     const r=s.recipe; if(!r) return;
-    let mult; // multiplier for ingredients
+    let mult;
     if(r.type==='comercial'){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
-      mult=tg/1000; // comercial: ingredients per kg, so mult=kg
+      mult=tg/1000;
     } else {
       mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
     }
@@ -1078,12 +1090,19 @@ function computeMP(selected){
     r.ingredients.forEach(ing=>{
       const raw=ing.raw||false;
       const normalName=normalizeName(ing.n);
-      const k=normalName.toLowerCase()+'__'+(raw?'cru':'coz');
-      if(!mp[k]) mp[k]={name:normalName,total:0,raw};
+      const cat=raw?'cru':categorizaIngrediente(normalName);
+      const k=normalName.toLowerCase()+'__'+cat;
+      if(!mp[k]) mp[k]={name:normalName,total:0,raw,cat};
       mp[k].total+=ing.q*mult;
     });
   });
-  return Object.values(mp).sort((a,b)=>a.raw!==b.raw?(a.raw?1:-1):a.name.localeCompare(b.name,'pt'));
+  // ordenar: cru → proteína → vegetal → suplemento, cada grupo alfabético
+  const catOrder={cru:0,proteina:1,vegetal:2,suplemento:3};
+  return Object.values(mp).sort((a,b)=>{
+    const ca=catOrder[a.cat]??3, cb=catOrder[b.cat]??3;
+    if(ca!==cb) return ca-cb;
+    return a.name.localeCompare(b.name,'pt');
+  });
 }
 
 // ── GERAR PDF ────────────────────────────────────────────
@@ -1112,16 +1131,23 @@ function gerarRelatorio(){
     doc.setTextColor(26,29,35);
   };
 
-  // helper: título de seção compacto
-  const secTitle=(y, title, r=L, w=W, color=[181,205,90])=>{
+  // helper: título de seção compacto — cor configurável
+  const secTitle=(y, title, r=L, w=W, color=[181,205,90], textColor=[26,29,35])=>{
     doc.setFillColor(...color);
     doc.rect(r, y, w, 6, 'F');
-    doc.setTextColor(26,29,35);
+    doc.setTextColor(...textColor);
     doc.setFontSize(8); doc.setFont('helvetica','bold');
     doc.text(title, r+2, y+4.2);
     doc.setTextColor(26,29,35);
     return y+7;
   };
+
+  // cores por seção
+  const COR_PEDIDOS   = [52,152,219];   // azul
+  const COR_COMERCIAL = [230,126,34];   // laranja
+  const COR_PERSONAL  = [181,205,90];   // verde
+  const COR_MP        = [192,57,43];    // vermelho
+  const BRANCO        = [255,255,255];
 
   // helper: quadrado de receita (para grade de personalizadas)
   const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
@@ -1175,6 +1201,18 @@ function gerarRelatorio(){
     const mpStr=r.ingredients.reduce((a,i)=>a+i.q*mult,0);
     doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+bh-1.5, {align:'right'});
     doc.setTextColor(26,29,35);
+
+    // observações em destaque amarelo dentro do quadrado
+    if(r.obs){
+      const obsY=y+bh-footerH-8;
+      doc.setFillColor(255,253,231);
+      doc.rect(x+1, obsY, bw-2, 7.5, 'F');
+      doc.setFontSize(6); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+      const obsText=`⚠ ${r.obs}`;
+      const obsLines=doc.splitTextToSize(obsText, bw-6);
+      doc.text(obsLines[0], x+2, obsY+4.5);
+      doc.setTextColor(26,29,35);
+    }
   };
 
   // ══════════════════════════════════════
@@ -1190,7 +1228,7 @@ function gerarRelatorio(){
 
   // Resumo pedidos comerciais
   if(selCom.length){
-    y=secTitle(y,'PEDIDOS — DIETAS COMERCIAIS');
+    y=secTitle(y,'PEDIDOS — DIETAS COMERCIAIS',L,W,COR_PEDIDOS,BRANCO);
     const pedRowsCom=selCom.map(s=>{
       const r=s.recipe;
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
@@ -1207,7 +1245,7 @@ function gerarRelatorio(){
 
   // Resumo pedidos personalizadas
   if(selPer.length){
-    y=secTitle(y,'PEDIDOS — DIETAS PERSONALIZADAS');
+    y=secTitle(y,'PEDIDOS — DIETAS PERSONALIZADAS',L,W,COR_PEDIDOS,BRANCO);
     const pedRowsPer=selPer.map(s=>{
       const r=s.recipe;
       const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
@@ -1236,7 +1274,7 @@ function gerarRelatorio(){
   // ══════════════════════════════════════
   if(selCom.length){
     doc.addPage(); pageHeader(); y=27;
-    y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS');
+    y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS',L,W,COR_COMERCIAL,BRANCO);
 
     selCom.forEach(s=>{
       const r=s.recipe;
@@ -1249,14 +1287,23 @@ function gerarRelatorio(){
       });
       // se não cabe na página, nova página
       const estimH=rows.length*5+14;
-      if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)');}
+      if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)',L,W,COR_COMERCIAL,BRANCO);}
       doc.autoTable({startY:y,
         head:[[{content:`${r.name.replace('Dieta Comercial ','')}${r.barf?' [BARF]':''} — ${mult.toFixed(2)} kg`,colSpan:2,
-          styles:{fillColor:[238,244,208],textColor:[143,163,66],fontStyle:'bold',fontSize:8}}]],
+          styles:{fillColor:COR_COMERCIAL,textColor:BRANCO,fontStyle:'bold',fontSize:8}}]],
         body:rows,styles:{fontSize:7.5,cellPadding:1.8},
         columnStyles:{0:{cellWidth:140},1:{cellWidth:50,halign:'right',fontStyle:'bold'}},
         margin:{left:L,right:10}});
-      y=doc.lastAutoTable.finalY+4;
+      y=doc.lastAutoTable.finalY+2;
+      if(r.obs){
+        doc.setFillColor(255,253,231); doc.rect(L,y,W,8,'F');
+        doc.setDrawColor(249,168,37); doc.setLineWidth(0.3); doc.rect(L,y,W,8,'S');
+        doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+        doc.text(`⚠ OBS: ${r.obs}`, L+2, y+5.2);
+        doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
+        y+=9;
+      }
+      y+=3;
     });
   }
 
@@ -1317,25 +1364,36 @@ function gerarRelatorio(){
   // PÁGINA FINAL — MATÉRIA-PRIMA TOTAL (sempre em página nova, cabe tudo)
   // ══════════════════════════════════════
   doc.addPage(); pageHeader(); y=27;
-  y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE');
+  y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE',L,W,COR_MP,BRANCO);
+
+  const CAT_CONFIG={
+    cru:     {label:'🥩 ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:[253,237,236], text:[192,57,43]},
+    proteina:{label:'🥩 PROTEÍNAS (carnes, vísceras, ovos, laticínios)', fill:[254,235,200], text:[174,89,15]},
+    vegetal: {label:'🥿 VEGETAIS E LEGUMES', fill:[232,245,233], text:[46,125,50]},
+    suplemento:{label:'💊 COMPLEMENTOS E SUPLEMENTOS', fill:[232,240,254], text:[30,66,159]},
+  };
 
   const mpRows=[];
-  let lastRaw=null;
+  let lastCat=null;
   mp.forEach(e=>{
-    if(e.raw!==lastRaw){
-      mpRows.push([{content:e.raw?'🥩 CRUS — separar do fluxo de cozimento':'🔥 COZIDOS — pré-preparo sexta-feira',
-        colSpan:7,styles:{fillColor:e.raw?[253,237,236]:[238,244,208],textColor:e.raw?[192,57,43]:[143,163,66],fontStyle:'bold',fontSize:7}}]);
-      lastRaw=e.raw;
+    const cat=e.cat||'suplemento';
+    if(cat!==lastCat){
+      const cfg=CAT_CONFIG[cat]||CAT_CONFIG.suplemento;
+      mpRows.push([{content:cfg.label,colSpan:7,
+        styles:{fillColor:cfg.fill,textColor:cfg.text,fontStyle:'bold',fontSize:7.5}}]);
+      lastCat=cat;
     }
     mpRows.push([e.name,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
   });
-  mpRows.push([{content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
-    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
-    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
-    {content:'',colSpan:3,styles:{fillColor:[238,244,208]}}]);
+  mpRows.push([
+    {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
+    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
+    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:[253,237,236],textColor:[192,57,43]}},
+    {content:'',colSpan:3,styles:{fillColor:[253,237,236]}}
+  ]);
 
   // calcula font size dinâmico para caber em uma página
-  const availH = PH - y - 35; // espaço disponível menos assinaturas
+  const availH = PH - y - 35;
   const rowH = availH / (mpRows.length + 1);
   const fontSize = Math.min(7.5, Math.max(5.5, rowH * 0.55));
   const cellPad = Math.min(2, Math.max(1, rowH * 0.2));
@@ -1344,7 +1402,7 @@ function gerarRelatorio(){
     head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],
     body:mpRows,
     styles:{fontSize,cellPadding:cellPad,overflow:'hidden'},
-    headStyles:{fillColor:[181,205,90],textColor:[26,29,35],fontStyle:'bold',fontSize:fontSize},
+    headStyles:{fillColor:COR_MP,textColor:BRANCO,fontStyle:'bold',fontSize:fontSize},
     columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
     margin:{left:L,right:10},
     pageBreak:'avoid'});
@@ -1403,9 +1461,11 @@ function renderReceitas(){
       </div>
       <div class="li-right">
         <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
+        <button class="btn btn-icon btn-sm" style="border-color:var(--amber);color:var(--amber)" onclick="editObs('${r.id}')"><i class="fas fa-sticky-note"></i></button>
         <button class="btn btn-icon btn-sm" onclick="editRecipe('${r.id}')"><i class="fas fa-edit"></i></button>
         <button class="btn btn-icon btn-sm btn-danger" onclick="deleteRecipe('${r.id}')"><i class="fas fa-trash-alt"></i></button>
       </div>
+      ${r.obs?`<div style="background:#FFFDE7;border:1px solid #F9A825;border-radius:7px;padding:5px 8px;margin-top:6px;font-size:11px;color:#E65100;width:100%"><i class="fas fa-exclamation-circle"></i> ${r.obs}</div>`:''}
     </div>`;
   };
 
@@ -1482,8 +1542,10 @@ function renderReceitas(){
                   </div>
                   <div style="display:flex;gap:6px;flex-shrink:0">
                     <button class="btn btn-sm btn-primary" onclick="editRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-edit"></i> Editar</button>
+                    <button class="btn btn-sm" style="border-color:var(--amber);color:var(--amber)" onclick="editObs('${r.id}');event.stopPropagation()"><i class="fas fa-sticky-note"></i></button>
                     <button class="btn btn-sm btn-danger" onclick="deleteRecipe('${r.id}');event.stopPropagation()"><i class="fas fa-trash-alt"></i></button>
                   </div>
+                  ${r.obs?`<div style="background:#FFFDE7;border:1px solid #F9A825;border-radius:7px;padding:6px 10px;margin-top:8px;font-size:11px;color:#E65100"><i class="fas fa-exclamation-circle"></i> <strong>Obs:</strong> ${r.obs}</div>`:''}
                 </div>
                 ${versions.length>0?`<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
                   <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px"><i class="fas fa-history"></i> Versões anteriores</div>
@@ -1788,6 +1850,29 @@ function saveEditRecipe(id,type){
   }
   saveData(); closeModal(); renderReceitas();
   toast('✅ Receita atualizada!');
+}
+
+function editObs(id){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  openModal(`<div class="modal-title">Observações — ${r.dog||r.name} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div style="background:#FFFDE7;border:1px solid #F9A825;border-radius:8px;padding:8px 12px;font-size:12px;color:#E65100;margin-bottom:12px">
+      <i class="fas fa-info-circle"></i> As observações aparecem em destaque amarelo no PDF gerado.
+    </div>
+    <div class="field">
+      <label>Observação sobre a dieta ou cliente</label>
+      <textarea id="obs-text" rows="4" placeholder="Ex: Cachorro com IRC — sem sal. Tutora pega às sextas-feiras." style="resize:vertical">${r.obs||''}</textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-full" onclick="saveObs('${id}')"><i class="fas fa-save"></i> Salvar</button>
+      ${r.obs?`<button class="btn btn-danger" onclick="saveObs('${id}',true)"><i class="fas fa-times"></i> Apagar</button>`:''}
+    </div>`);
+}
+
+function saveObs(id, clear=false){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  r.obs=clear?'':document.getElementById('obs-text')?.value.trim()||'';
+  saveData(); closeModal(); renderReceitas();
+  toast(clear?'🗑 Observação apagada':'✅ Observação salva!');
 }
 
 function deleteRecipe(id){
