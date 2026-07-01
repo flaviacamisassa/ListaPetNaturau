@@ -1481,7 +1481,13 @@ function gerarRelatorio(){
     doc.setTextColor(26,29,35);
 
     // Ingredientes — coluna única: nome à esquerda, quantidade à direita
-    const ings=r.ingredients.slice().sort((a,b)=>a.n.localeCompare(b.n,'pt'));
+    const catOrder={proteina:0,vegetal:1,suplemento:2,cru:0};
+    const ings=r.ingredients.slice().sort((a,b)=>{
+      const ca=catOrder[categorizaIngrediente(normalizeName(a.n))]??2;
+      const cb=catOrder[categorizaIngrediente(normalizeName(b.n))]??2;
+      if(ca!==cb) return ca-cb;
+      return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
+    });
     const footerH=5;
     const availH=bh-7-footerH-2; // altura disponível entre header e footer
     const lineH=availH/Math.max(ings.length,1);
@@ -1594,7 +1600,13 @@ function gerarRelatorio(){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
       if(!tg) return;
       const mult=tg/1000;
-      const rows=r.ingredients.slice().sort((a,b)=>a.n.localeCompare(b.n,'pt')).map(ing=>{
+      const catOrd={proteina:0,vegetal:1,suplemento:2,cru:0};
+      const rows=r.ingredients.slice().sort((a,b)=>{
+        const ca=catOrd[categorizaIngrediente(normalizeName(a.n))]??2;
+        const cb=catOrd[categorizaIngrediente(normalizeName(b.n))]??2;
+        if(ca!==cb) return ca-cb;
+        return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
+      }).map(ing=>{
         const tot=ing.q*mult;
         return [ing.n+(ing.raw?' 🥩':''), tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
       });
@@ -1696,7 +1708,8 @@ function gerarRelatorio(){
         styles:{fillColor:cfg.fill,textColor:cfg.text,fontStyle:'bold',fontSize:7.5}}]);
       lastCat=cat;
     }
-    mpRows.push([e.name,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
+    const nomeDisplay=e.name+(normalizeName(e.name)==='Ovo'?` (${Math.round(e.total/50)} unid)`:'');
+    mpRows.push([nomeDisplay,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
   });
   mpRows.push([
     {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
