@@ -1256,46 +1256,52 @@ function removeCustom(id,idx){
 // ── COMPUTE MP ───────────────────────────────────────────
 // normaliza nomes de ingredientes para somatória consistente
 function normalizeName(name){
-  const n = name.toLowerCase().trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos para comparação
+  if(!name) return name;
+  // normaliza para comparação: minúsculo + sem acentos + sem espaços extras
+  const norm = s => s.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/\s+/g,' ');
 
-  // ── MAPA DE ALIASES E ERROS ORTOGRÁFICOS ──────────────────
+  const n = norm(name);
+
   const aliases = [
     // ABÓBORA / MORANGA
     {names:['moranga','abobora','abobora moranga','abobora-moranga','aboboro','abobura','moranga cabotia','cabotia'], out:'Abóbora Moranga'},
     // ABOBRINHA
     {names:['abobrinha','abobrinha italiana','aboborinha','aborrinha','aborinha','abobrinha italina','abrinha'], out:'Abobrinha Italiana'},
-    // SOBRECOXA
-    {names:['sobrecoxa','frango/sobrecoxa','sobrecoxa de frango','coxa e sobrecoxa','file de sobrecoxa','file sobrecoxa','file de sobrecoxa','sobrecoxa frango','coxa sobrecoxa'], out:'Sobrecoxa'},
+    // SOBRECOXA — todas as variações
+    {names:['sobrecoxa','frango/sobrecoxa','sobrecoxa de frango','coxa e sobrecoxa','file de sobrecoxa','file sobrecoxa','sobrecoxa frango','coxa sobrecoxa','file de sobrecoxa'], out:'Sobrecoxa'},
     // ARROZ
     {names:['arroz'], out:'Arroz Branco'},
-    // SAL — unificar tipos (exceto sal rosa e sal marinho que ficam separados se quiser)
+    {names:['arroz branco'], out:'Arroz Branco'},
+    {names:['arroz integral','arroz intregral','arroz integrl'], out:'Arroz Integral'},
+    {names:['arroz parboilizado','arroz parbolizado','arroz parboizado'], out:'Arroz Parboilizado'},
+    // SAL
     {names:['sal','sal refinado','sal iodado','sal comum','sal de cozinha','sal grosso'], out:'Sal'},
     // CENOURA
-    {names:['cenoura','cenora','cenorra','cenura','cenoura','cenouras'], out:'Cenoura'},
+    {names:['cenoura','cenora','cenorra','cenura','cenouras'], out:'Cenoura'},
     // CHUCHU
     {names:['chuchu','chuho','chucho'], out:'Chuchu'},
     // BRÓCOLIS
-    {names:['brocolis','brocolis','brocoli','brocóli','brocoles','brocoles'], out:'Brócolis'},
+    {names:['brocolis','brocoli','brocoles'], out:'Brócolis'},
     // COUVE
     {names:['couve','cuve','couve manteiga','couve-manteiga'], out:'Couve'},
     // COUVE-FLOR
     {names:['couve flor','couve-flor','couveflor','couve-flo'], out:'Couve-flor'},
     // FÍGADO BOVINO
-    {names:['figado bovino','figado de boi','figado bov','fig bovino','figado bovi','fígado de boi','fígado bovino','figado bov'], out:'Fígado Bovino'},
+    {names:['figado bovino','figado de boi','figado bov','fig bovino','figado bovi'], out:'Fígado Bovino'},
     // FÍGADO DE FRANGO
-    {names:['figado de frango','figado frango','fig de frango','fígado de frango'], out:'Fígado de Frango'},
+    {names:['figado de frango','figado frango','fig de frango'], out:'Fígado de Frango'},
     // FÍGADO DE PATO
-    {names:['figado de pato','figado pato','fígado de pato'], out:'Fígado de Pato'},
+    {names:['figado de pato','figado pato'], out:'Fígado de Pato'},
     // MÚSCULO BOVINO
-    {names:['musculo','musculo bovino','músculo','músculo bovino','musulo','musculo bov'], out:'Músculo'},
+    {names:['musculo','musculo bovino','musulo','musculo bov'], out:'Músculo'},
     // CORAÇÃO DE BOI
-    {names:['coracao de boi','coracao boi','coração boi','coracao bovino','coração bovino','coracao'], out:'Coração de Boi'},
+    {names:['coracao de boi','coracao boi','coracao bovino','coracao'], out:'Coração de Boi'},
     // CORAÇÃO DE FRANGO
-    {names:['coracao de frango','coracao frango','coração frango','coração de frango'], out:'Coração de Frango'},
+    {names:['coracao de frango','coracao frango'], out:'Coração de Frango'},
     // BATATA DOCE
-    {names:['batata doce','batata-doce','batata doce roxa','batatadoce'], out:'Batata Doce'},
+    {names:['batata doce','batata-doce','batatadoce'], out:'Batata Doce'},
     // BATATA INGLESA
     {names:['batata inglesa','batata-inglesa','batata ing'], out:'Batata Inglesa'},
     // PEITO DE FRANGO
@@ -1303,43 +1309,40 @@ function normalizeName(name){
     // PEITO DE PERU
     {names:['peito de peru','peito peru','peru','peto de peru'], out:'Peito de Peru'},
     // LOMBO SUÍNO
-    {names:['lombo','lombo suino','lombo suíno'], out:'Lombo Suíno'},
+    {names:['lombo','lombo suino'], out:'Lombo Suíno'},
     // PERNIL SUÍNO
-    {names:['pernil','pernil suino','pernil suíno'], out:'Pernil Suíno'},
+    {names:['pernil','pernil suino'], out:'Pernil Suíno'},
     // TILÁPIA
-    {names:['tilapia','tilápia','tilapa','tilapsia'], out:'Tilápia'},
+    {names:['tilapia','tilapa','tilapsia'], out:'Tilápia'},
     // INHAME
     {names:['inhame','inghame','inhane'], out:'Inhame'},
     // CARÁ
-    {names:['cara','cará','cara branco'], out:'Cará'},
-    // BAROA (mandioquinha)
-    {names:['baroa','batata baroa','mandioquinha','barôa','barroa'], out:'Baroa'},
+    {names:['cara','cara branco'], out:'Cará'},
+    // BAROA
+    {names:['baroa','batata baroa','mandioquinha','barroa'], out:'Baroa'},
     // VAGEM
     {names:['vagem','vagern','vagen'], out:'Vagem'},
-    // ARROZ INTEGRAL
-    {names:['arroz integral','arroz intregral','arroz integrl'], out:'Arroz Integral'},
-    // ARROZ PARBOILIZADO
-    {names:['arroz parboilizado','arroz parbolizado','arroz parboizado'], out:'Arroz Parboilizado'},
-    // ARROZ BRANCO (explícito)
-    {names:['arroz branco'], out:'Arroz Branco'},
     // AZEITE
     {names:['azeite','azeite extra virgem','azeite de oliva','azeite extravirgem'], out:'Azeite Extra Virgem'},
-    // ÓLEO DE COCO
-    {names:['oleo de coco','óleo de coco','oleo coco'], out:'Óleo de Coco'},
-    // ÓLEO DE GIRASSOL
-    {names:['oleo de girassol','óleo de girassol','oleo girassol'], out:'Óleo de Girassol'},
-    // ÓLEO DE CANOLA
-    {names:['oleo de canola','óleo de canola','oleo canola'], out:'Óleo de Canola'},
-    // ÓLEO DE SOJA
-    {names:['oleo de soja','óleo de soja'], out:'Óleo de Soja'},
+    // ÓLEOS
+    {names:['oleo de coco'], out:'Óleo de Coco'},
+    {names:['oleo de girassol'], out:'Óleo de Girassol'},
+    {names:['oleo de canola'], out:'Óleo de Canola'},
+    {names:['oleo de soja'], out:'Óleo de Soja'},
     // BANHA SUÍNA
-    {names:['banha suina','banha suína','banha','banha de porco'], out:'Banha Suína'},
+    {names:['banha suina','banha','banha de porco'], out:'Banha Suína'},
     // CÚRCUMA
-    {names:['curcuma','cúrcuma','curcuma em po','açafrão da terra'], out:'Cúrcuma'},
+    {names:['curcuma','curcuma em po','acafrao da terra'], out:'Cúrcuma'},
     // AGRIÃO
-    {names:['agriao','agrião','agrao'], out:'Agrião'},
+    {names:['agriao','agrao'], out:'Agrião'},
     // MANDIOCA
     {names:['mandioca','aipim','macaxeira'], out:'Mandioca'},
+    // LÍNGUA BOVINA
+    {names:['lingua','lingua bovina','lingua de boi'], out:'Língua Bovina'},
+    // COTTAGE
+    {names:['cottage','queijo cottage','cottage cheese'], out:'Cottage'},
+    // OVO
+    {names:['ovo','ovo de galinha','ovos'], out:'Ovo'},
     // TOMATE
     {names:['tomate com semente','tomate'], out:'Tomate'},
     // ESPINAFRE
@@ -1347,26 +1350,17 @@ function normalizeName(name){
     // BERINJELA
     {names:['berinjela','berinjelas'], out:'Berinjela'},
     // PULMÃO
-    {names:['pulmao de boi','pulmão de boi'], out:'Pulmão de Boi'},
-    // LÍNGUA BOVINA
-    {names:['lingua','lingua bovina','língua','língua bovina'], out:'Língua Bovina'},
-    // COTTAGE
-    {names:['cottage','queijo cottage','cottage cheese'], out:'Cottage'},
-    // OVO
-    {names:['ovo','ovo de galinha','ovos','ovo de galinha (90g)'], out:'Ovo'},
+    {names:['pulmao de boi'], out:'Pulmão de Boi'},
+    {names:['pulmao de porco'], out:'Pulmão de Porco'},
   ];
 
-  // testa cada alias
+  // compara sempre com alias normalizado
   for(const alias of aliases){
-    if(alias.names.includes(n)) return alias.out;
-    // testa também sem acentos nos aliases
     for(const a of alias.names){
-      const aN=a.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      if(aN===n) return alias.out;
+      if(norm(a)===n) return alias.out;
     }
   }
 
-  // se não encontrou no mapa, retorna o nome original capitalizado corretamente
   return name.trim();
 }
 
@@ -1739,22 +1733,37 @@ function gerarRelatorio(){
   doc.text('Validação do responsável técnico',130,y);
 
   // SALVAR HISTÓRICO
-  const hist={
-    id:'h'+Date.now(), date:state.today.date, dateStr:fmtDate(state.today.date),
-    recipes:Object.values(sel).map(s=>recName(s.recipe)).filter(Boolean),
-    totalKg:(totalMP/1000).toFixed(2),
-    selected:JSON.parse(JSON.stringify(sel))
-  };
-  if(!state.db.history) state.db.history=[];
-  state.db.history=state.db.history.filter(h=>h.date!==state.today.date);
-  state.db.history.unshift(hist);
-  if(state.db.history.length>90) state.db.history=state.db.history.slice(0,90);
-  saveData();
+  if(!window._gerarPDFonly){
+    const hist={
+      id:'h'+Date.now(), date:state.today.date, dateStr:fmtDate(state.today.date),
+      recipes:Object.values(sel).map(s=>recName(s.recipe)).filter(Boolean),
+      totalKg:(totalMP/1000).toFixed(2),
+      selected:JSON.parse(JSON.stringify(sel))
+    };
+    if(!state.db.history) state.db.history=[];
+    state.db.history=state.db.history.filter(h=>h.date!==state.today.date);
+    state.db.history.unshift(hist);
+    if(state.db.history.length>90) state.db.history=state.db.history.slice(0,90);
+    saveData();
+  }
 
   doc.save(`petnaturau-${dateShort}.pdf`);
+
+  if(window._gerarPDFonly){
+    toast('📄 PDF gerado a partir do histórico!',3000);
+    return;
+  }
+
   toast('📄 PDF gerado! Salvo no histórico.',3500);
   state.today={selected:{},date:state.today.date};
   renderProducao();
+}
+
+// Versão sem salvar histórico — usada ao regenerar PDF do histórico
+function gerarRelatorioSemSalvar(){
+  window._gerarPDFonly=true;
+  gerarRelatorio();
+  window._gerarPDFonly=false;
 }
 
 // ── RECEITAS ─────────────────────────────────────────────
@@ -2451,29 +2460,23 @@ function viewHistDetail(id){
 
 function regenarPDFHist(id){
   const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
-  // carrega a seleção salva e gera o PDF sem alterar o estado atual
+  // backup do estado atual
   const selBackup=JSON.parse(JSON.stringify(state.today.selected));
   const dateBackup=state.today.date;
-  state.today.selected=JSON.parse(JSON.stringify(h.selected||{}));
-  // garante que cada seleção tem a receita atualizada do db
-  Object.keys(state.today.selected).forEach(rid=>{
+  // carrega seleção do histórico com receitas ATUAIS do DB
+  const sel=JSON.parse(JSON.stringify(h.selected||{}));
+  Object.keys(sel).forEach(rid=>{
     const r=state.db.recipes.find(x=>x.id===rid);
-    if(r) state.today.selected[rid].recipe=r;
-    else delete state.today.selected[rid];
+    if(r) sel[rid].recipe=r; // usa sempre a receita atual
+    else delete sel[rid];
   });
+  state.today.selected=sel;
   state.today.date=h.date;
-  gerarRelatorio();
-  // restaura o estado atual após gerar (gerarRelatorio reseta selected)
-  setTimeout(()=>{
-    state.today.selected=selBackup;
-    state.today.date=dateBackup;
-    // remove o registro duplicado que gerarRelatorio adicionou
-    state.db.history=state.db.history.filter(x=>x.id!==id||x.id===id);
-    // garante que o histórico original volta
-    if(!state.db.history.find(x=>x.id===id)){
-      state.db.history.unshift(h);
-    }
-  },500);
+  // gera PDF sem salvar no histórico
+  gerarRelatorioSemSalvar();
+  // restaura imediatamente (gerarRelatorioSemSalvar não reseta o estado)
+  state.today.selected=selBackup;
+  state.today.date=dateBackup;
 }
 
 // ── PETISCOS & MASTIGÁVEIS ──────────────────────────────────
