@@ -676,9 +676,10 @@ function renderProducao() {
           </div>
           <div class="custom-box">
             <div class="custom-box-title"><i class="fas fa-user-tag"></i> Pacote personalizado</div>
-            ${(s.customs||[]).map((c,i)=>`<div class="custom-entry">
+            ${(s.customs||[]).map((c,i)=>`<div class="custom-entry" id="ce-${id}-${i}">
               <span class="ce-name">${c.name}</span>
               <span class="ce-detail">${c.qty}×${c.g}g</span>
+              <button onclick="editCustomInline('${id}',${i})" style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;padding:0 2px" title="Editar"><i class="fas fa-pen"></i></button>
               <button onclick="removeCustom('${id}',${i})">×</button>
             </div>`).join('')}
             <div class="custom-add-form">
@@ -885,15 +886,95 @@ function totalGofSel(s) {
 function toggleRecipe(id){
   const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
   if(state.today.selected[id]){
-    openModal(`<div class="modal-title">Remover da produção?</div>
-      <p style="font-size:13px;color:var(--text-2);margin-bottom:20px">Remover <strong>${recName(r)}</strong> da lista de hoje?</p>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-danger btn-full" onclick="confirmRemoveRecipe('${id}')">Sim, remover</button>
+    const s=state.today.selected[id];
+    const tg=r.type==='comercial'
+      ?(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0)
+      :(s.unidades||r.defQty||30)*(r.pktG||0);
+    openModal(`<div class="modal-title">${recName(r)} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+      <div style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--green-dark);margin-bottom:16px;font-weight:600">
+        ✅ Já na produção — ${tg>0?(tg/1000).toFixed(2)+' kg':'configurado'}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-primary btn-full" onclick="closeModal();editRecipeInProduction('${id}')">
+          <i class="fas fa-edit"></i> Editar — adicionar ou remover clientes
+        </button>
+        <button class="btn btn-danger btn-full" onclick="confirmRemoveRecipe('${id}')">
+          <i class="fas fa-times"></i> Remover da produção
+        </button>
         <button class="btn btn-full" onclick="closeModal()">Cancelar</button>
       </div>`);
     return;
   }
   openAddRecipeModal(id);
+}
+
+function editRecipeInProduction(id){
+  const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  const s=state.today.selected[id]; if(!s) return;
+  // pre-populate _modalCustoms with existing customs
+  window._modalCustoms=JSON.parse(JSON.stringify(s.customs||[]));
+
+  let body='';
+  if(r.type==='comercial'){
+    body=`<div style="margin-bottom:14px">
+      <div class="section-label">Pacotes 200g</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('m200',-1)">−</button>
+        <input type="number" id="m200" min="0" value="${s.p200||0}" style="width:52px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('m200',1)">+</button>
+      </div>
+      <div class="section-label" style="margin-top:12px">Pacotes 500g</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('m500',-1)">−</button>
+        <input type="number" id="m500" min="0" value="${s.p500||0}" style="width:52px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('m500',1)">+</button>
+      </div>
+      <div class="section-label" style="margin-top:12px">📦 Clientes personalizados</div>
+      <div id="modal-customs" style="margin-bottom:6px">${window._modalCustoms.map((c,i)=>`<div class="custom-entry" id="mce-${i}">
+        <span class="ce-name">${c.name}</span>
+        <span class="ce-detail">${c.qty}×${c.g}g</span>
+        <button onclick="editModalCustom(${i})" style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;padding:0 2px" title="Editar"><i class="fas fa-pen"></i></button>
+        <button onclick="window._modalCustoms.splice(${i},1);refreshModalCustoms()">×</button>
+      </div>`).join('')}</div>
+      <div style="display:grid;grid-template-columns:1fr 70px 55px;gap:5px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">Nome</span>
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">g/pct</span>
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">Qtd</span>
+      </div>
+      <div id="client-input-rows">
+        ${[0,1,2].map(i=>`<div class="client-row" style="display:grid;grid-template-columns:1fr 70px 55px 28px;gap:5px;margin-bottom:5px">
+          <input type="text" placeholder="Nome do cliente" class="cr-name" style="font-size:12px">
+          <input type="number" placeholder="g" min="1" class="cr-g" style="font-size:12px">
+          <input type="number" placeholder="qtd" min="1" value="1" class="cr-qty" style="font-size:12px">
+          <button onclick="this.closest('.client-row').remove()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-3);cursor:pointer;font-size:14px">×</button>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn btn-sm" style="flex:1" onclick="addClientRow()"><i class="fas fa-plus"></i> + Linha</button>
+        <button class="custom-add-btn" style="flex:2" onclick="modalAddAllCustoms()"><i class="fas fa-check"></i> Adicionar todos</button>
+      </div>
+    </div>`;
+  } else {
+    const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
+    body=`<div style="margin-bottom:14px">
+      ${r.pktG?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 ${r.pktG}g por unidade</div>`:''}
+      <div class="section-label">Unidades a produzir (dias)</div>
+      <div class="pkt-stepper">
+        <button onclick="modalAdj('mper',-5)">−5</button>
+        <button onclick="modalAdj('mper',-1)">−</button>
+        <input type="number" id="mper" min="1" value="${unidades}" style="width:64px;text-align:center;font-size:16px;font-weight:700">
+        <button onclick="modalAdj('mper',1)">+</button>
+        <button onclick="modalAdj('mper',5)">+5</button>
+      </div>
+    </div>`;
+  }
+
+  openModal(`<div class="modal-title">Editar — ${recName(r)} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:14px"><span class="badge ${r.barf?'badge-red':catBadge(r.cat)}">${r.barf?'BARF':r.cat}</span></div>
+    ${body}
+    <button class="gen-btn" style="border-radius:10px" onclick="confirmAddRecipe('${id}')">
+      <i class="fas fa-check"></i> Confirmar alterações
+    </button>`);
 }
 
 function confirmRemoveRecipe(id){
@@ -918,14 +999,26 @@ function openAddRecipeModal(id){
         <input type="number" id="m500" min="0" value="0" style="width:52px;text-align:center;font-size:16px;font-weight:700">
         <button onclick="modalAdj('m500',1)">+</button>
       </div>
-      <div class="section-label" style="margin-top:12px">📦 Pacote personalizado (opcional)</div>
-      <input type="text" id="mcn" placeholder="Nome do cliente" style="margin-bottom:6px">
-      <div class="row2" style="margin-bottom:6px">
-        <input type="number" id="mcg" placeholder="g/pacote" min="1">
-        <input type="number" id="mcq" placeholder="qtd" min="1" value="1">
+      <div class="section-label" style="margin-top:12px">📦 Clientes personalizados</div>
+      <div id="modal-customs" style="margin-bottom:6px"></div>
+      <div id="multi-client-rows"></div>
+      <div style="display:grid;grid-template-columns:1fr 70px 55px;gap:5px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">Nome</span>
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">g/pct</span>
+        <span style="font-size:10px;color:var(--text-3);font-weight:600">Qtd</span>
       </div>
-      <button class="custom-add-btn" onclick="modalAddCustom()"><i class="fas fa-plus"></i> Adicionar cliente</button>
-      <div id="modal-customs" style="margin-top:6px"></div>
+      <div id="client-input-rows">
+        ${[0,1,2].map(i=>`<div class="client-row" style="display:grid;grid-template-columns:1fr 70px 55px 28px;gap:5px;margin-bottom:5px">
+          <input type="text" placeholder="Nome do cliente" class="cr-name" style="font-size:12px">
+          <input type="number" placeholder="g" min="1" class="cr-g" style="font-size:12px">
+          <input type="number" placeholder="qtd" min="1" value="1" class="cr-qty" style="font-size:12px">
+          <button onclick="this.closest('.client-row').remove()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-3);cursor:pointer;font-size:14px">×</button>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn btn-sm" style="flex:1" onclick="addClientRow()"><i class="fas fa-plus"></i> + Linha</button>
+        <button class="custom-add-btn" style="flex:2" onclick="modalAddAllCustoms()"><i class="fas fa-check"></i> Adicionar todos</button>
+      </div>
     </div>`;
   } else {
     const pad=r.defQty||30;
@@ -967,16 +1060,128 @@ function modalAddCustom(){
   document.getElementById('mcn').value='';
   document.getElementById('mcg').value='';
   document.getElementById('mcq').value='1';
+  refreshModalCustoms();
+}
+
+function addClientRow(){
+  const container=document.getElementById('client-input-rows');
+  if(!container) return;
+  const row=document.createElement('div');
+  row.className='client-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 70px 55px 28px;gap:5px;margin-bottom:5px';
+  row.innerHTML=`<input type="text" placeholder="Nome do cliente" class="cr-name" style="font-size:12px">
+    <input type="number" placeholder="g" min="1" class="cr-g" style="font-size:12px">
+    <input type="number" placeholder="qtd" min="1" value="1" class="cr-qty" style="font-size:12px">
+    <button onclick="this.closest('.client-row').remove()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-3);cursor:pointer;font-size:14px">×</button>`;
+  container.appendChild(row);
+  row.querySelector('.cr-name').focus();
+}
+
+function modalAddAllCustoms(){
+  const rows=document.querySelectorAll('#client-input-rows .client-row');
+  let added=0;
+  rows.forEach(row=>{
+    const name=row.querySelector('.cr-name')?.value.trim();
+    const g=parseInt(row.querySelector('.cr-g')?.value)||0;
+    const qty=parseInt(row.querySelector('.cr-qty')?.value)||1;
+    if(name&&g){
+      window._modalCustoms=window._modalCustoms||[];
+      window._modalCustoms.push({name,g,qty});
+      added++;
+    }
+  });
+  if(!added){toast('⚠️ Preencha ao menos um cliente com nome e gramas');return;}
+  // limpa as linhas e reinicia com 3 vazias
+  const container=document.getElementById('client-input-rows');
+  if(container){
+    container.innerHTML=[0,1,2].map(i=>`<div class="client-row" style="display:grid;grid-template-columns:1fr 70px 55px 28px;gap:5px;margin-bottom:5px">
+      <input type="text" placeholder="Nome do cliente" class="cr-name" style="font-size:12px">
+      <input type="number" placeholder="g" min="1" class="cr-g" style="font-size:12px">
+      <input type="number" placeholder="qtd" min="1" value="1" class="cr-qty" style="font-size:12px">
+      <button onclick="this.closest('.client-row').remove()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-3);cursor:pointer;font-size:14px">×</button>
+    </div>`).join('');
+  }
+  refreshModalCustoms();
+  toast(`✅ ${added} cliente${added!==1?'s':''} adicionado${added!==1?'s':''}!`);
+}
+
+function refreshModalCustoms(){
   const el=document.getElementById('modal-customs');
-  if(el) el.innerHTML=window._modalCustoms.map((c,i)=>`<div class="custom-entry">
+  if(!el) return;
+  el.innerHTML=(window._modalCustoms||[]).map((c,i)=>`<div class="custom-entry" id="mce-${i}">
     <span class="ce-name">${c.name}</span>
     <span class="ce-detail">${c.qty}×${c.g}g</span>
-    <button onclick="window._modalCustoms.splice(${i},1);document.getElementById('modal-customs').innerHTML='';modalAddCustom()">×</button>
+    <button onclick="editModalCustom(${i})" style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;padding:0 2px" title="Editar"><i class="fas fa-pen"></i></button>
+    <button onclick="window._modalCustoms.splice(${i},1);refreshModalCustoms()">×</button>
   </div>`).join('');
+}
+
+function editModalCustom(i){
+  const c=window._modalCustoms[i]; if(!c) return;
+  // remove o item e coloca os dados na primeira linha vazia disponível
+  window._modalCustoms.splice(i,1);
+  refreshModalCustoms();
+  // preenche a primeira linha do input-rows
+  const rows=document.querySelectorAll('#client-input-rows .client-row');
+  const firstEmpty=Array.from(rows).find(r=>!r.querySelector('.cr-name')?.value.trim());
+  const target=firstEmpty||rows[0];
+  if(target){
+    target.querySelector('.cr-name').value=c.name;
+    target.querySelector('.cr-g').value=c.g;
+    target.querySelector('.cr-qty').value=c.qty;
+    target.querySelector('.cr-name').focus();
+  }
+  toast('✏️ Edite e clique em "Adicionar todos"',3000);
+}
+
+function editCustomInline(recipeId, idx){
+  const s=state.today.selected[recipeId]; if(!s) return;
+  const c=s.customs[idx]; if(!c) return;
+  // abre um mini-modal de edição
+  openModal(`<div class="modal-title">Editar cliente <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div class="field"><label>Nome do cliente</label>
+      <input type="text" id="ec-name" value="${c.name}">
+    </div>
+    <div class="row2">
+      <div class="field"><label>g/pacote</label>
+        <input type="number" id="ec-g" min="1" value="${c.g}">
+      </div>
+      <div class="field"><label>Qtd pacotes</label>
+        <input type="number" id="ec-qty" min="1" value="${c.qty}">
+      </div>
+    </div>
+    <div style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--green-dark);margin-bottom:14px">
+      <i class="fas fa-info-circle"></i> Total atual: <strong>${c.qty}×${c.g}g = ${(c.qty*c.g/1000).toFixed(3)} kg</strong>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveCustomEdit('${recipeId}',${idx})">
+      <i class="fas fa-save"></i> Salvar alterações
+    </button>`);
+}
+
+function saveCustomEdit(recipeId, idx){
+  const s=state.today.selected[recipeId]; if(!s) return;
+  const name=document.getElementById('ec-name')?.value.trim();
+  const g=parseInt(document.getElementById('ec-g')?.value)||0;
+  const qty=parseInt(document.getElementById('ec-qty')?.value)||1;
+  if(!name||!g){toast('⚠️ Preencha nome e peso');return;}
+  s.customs[idx]={name,g,qty};
+  closeModal(); renderProducao();
+  toast('✅ Cliente atualizado!');
 }
 
 function confirmAddRecipe(id){
   const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
+  // collect any filled rows that weren't yet added
+  const rows=document.querySelectorAll('#client-input-rows .client-row');
+  rows.forEach(row=>{
+    const name=row.querySelector('.cr-name')?.value.trim();
+    const g=parseInt(row.querySelector('.cr-g')?.value)||0;
+    const qty=parseInt(row.querySelector('.cr-qty')?.value)||1;
+    if(name&&g){
+      window._modalCustoms=window._modalCustoms||[];
+      window._modalCustoms.push({name,g,qty});
+    }
+  });
   if(r.type==='comercial'){
     const p200=parseInt(document.getElementById('m200')?.value)||0;
     const p500=parseInt(document.getElementById('m500')?.value)||0;
