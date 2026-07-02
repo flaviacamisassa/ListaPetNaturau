@@ -968,22 +968,18 @@ function editRecipeInProduction(id){
         <button onclick="modalAdj('mper',5)">+5</button>
       </div>
       <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px;background:var(--bg)">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-          <input type="checkbox" id="mpkts-split" ${sp?'checked':''} onchange="togglePktSplit()" style="width:16px;height:16px">
-          Dividir pacotes nessa produção
-        </label>
-        <div id="mpkts-split-fields" style="display:${sp?'block':'none'};margin-top:10px">
-          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Ex: 1 unidade produzida → 2 pacotes menores</div>
-          <div class="row2">
-            <div class="field" style="margin-bottom:0">
-              <label>Total de pacotes</label>
-              <input type="number" id="mpkts-total" min="1" placeholder="Ex: 60" value="${sp?sp.total:''}">
-            </div>
-            <div class="field" style="margin-bottom:0">
-              <label>Peso por pacote (g)</label>
-              <input type="number" id="mpkts-g" min="1" placeholder="Ex: 328" value="${sp?sp.g:''}">
-            </div>
-          </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;flex:1">
+            <input type="checkbox" id="mpkts-split" ${sp?'checked':''} onchange="togglePktSplit('${r.id}')" style="width:16px;height:16px">
+            Dividir pacotes
+          </label>
+          <select id="mpkts-div" onchange="togglePktSplit('${r.id}')" style="display:${sp?'inline-block':'none'};font-size:13px;font-weight:700;border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:white">
+            <option value="2" ${sp&&sp.divisor===2?'selected':''}>÷ 2</option>
+            <option value="3" ${sp&&sp.divisor===3?'selected':''}>÷ 3</option>
+          </select>
+        </div>
+        <div id="mpkts-split-preview" style="display:${sp?'block':'none'};margin-top:10px;background:var(--green-light);border-radius:7px;padding:8px 12px">
+          <div style="font-size:12px;color:var(--green-dark);font-weight:700" id="mpkts-preview-text">${sp?`${sp.total} pacotes de ${sp.g}g`:''}</div>
         </div>
       </div>
     </div>`;
@@ -1054,22 +1050,18 @@ function openAddRecipeModal(id){
       </div>
       <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão: <strong>${pad} unidades</strong></div>
       <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px;background:var(--bg)">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-          <input type="checkbox" id="mpkts-split" onchange="togglePktSplit()" style="width:16px;height:16px">
-          Dividir pacotes nessa produção
-        </label>
-        <div id="mpkts-split-fields" style="display:none;margin-top:10px">
-          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Ex: 1 unidade produzida → 2 pacotes menores</div>
-          <div class="row2">
-            <div class="field" style="margin-bottom:0">
-              <label>Total de pacotes</label>
-              <input type="number" id="mpkts-total" min="1" placeholder="Ex: 60">
-            </div>
-            <div class="field" style="margin-bottom:0">
-              <label>Peso por pacote (g)</label>
-              <input type="number" id="mpkts-g" min="1" placeholder="Ex: 328">
-            </div>
-          </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;flex:1">
+            <input type="checkbox" id="mpkts-split" onchange="togglePktSplit('${r.id}')" style="width:16px;height:16px">
+            Dividir pacotes
+          </label>
+          <select id="mpkts-div" onchange="togglePktSplit('${r.id}')" style="display:none;font-size:13px;font-weight:700;border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:white">
+            <option value="2">÷ 2</option>
+            <option value="3">÷ 3</option>
+          </select>
+        </div>
+        <div id="mpkts-split-preview" style="display:none;margin-top:10px;background:var(--green-light);border-radius:7px;padding:8px 12px">
+          <div style="font-size:12px;color:var(--green-dark);font-weight:700" id="mpkts-preview-text"></div>
         </div>
       </div>
     </div>`;
@@ -1208,16 +1200,12 @@ function saveCustomEdit(recipeId, idx){
 
 function confirmAddRecipe(id){
   const r=state.db.recipes.find(x=>x.id===id); if(!r) return;
-  // collect any filled rows that weren't yet added
   const rows=document.querySelectorAll('#client-input-rows .client-row');
   rows.forEach(row=>{
     const name=row.querySelector('.cr-name')?.value.trim();
     const g=parseInt(row.querySelector('.cr-g')?.value)||0;
     const qty=parseInt(row.querySelector('.cr-qty')?.value)||1;
-    if(name&&g){
-      window._modalCustoms=window._modalCustoms||[];
-      window._modalCustoms.push({name,g,qty});
-    }
+    if(name&&g){ window._modalCustoms=window._modalCustoms||[]; window._modalCustoms.push({name,g,qty}); }
   });
   if(r.type==='comercial'){
     const p200=parseInt(document.getElementById('m200')?.value)||0;
@@ -1229,21 +1217,33 @@ function confirmAddRecipe(id){
   } else {
     const unidades=parseInt(document.getElementById('mper')?.value)||(r.defQty||30);
     const splitOn=document.getElementById('mpkts-split')?.checked||false;
-    const splitTotal=splitOn?parseInt(document.getElementById('mpkts-total')?.value)||null:null;
-    const splitG=splitOn?parseInt(document.getElementById('mpkts-g')?.value)||null:null;
-    state.today.selected[id]={recipe:r, unidades,
-      splitPkts: splitOn&&splitTotal&&splitG ? {total:splitTotal, g:splitG} : null
-    };
+    let splitPkts=null;
+    if(splitOn&&r.pktG){
+      const divisor=parseInt(document.getElementById('mpkts-div')?.value)||2;
+      splitPkts={total:unidades*divisor, g:Math.round(r.pktG/divisor), divisor};
+    }
+    state.today.selected[id]={recipe:r, unidades, splitPkts};
   }
   window._modalCustoms=[];
   closeModal(); renderProducao();
   toast('✅ Adicionado à produção!');
 }
 
-function togglePktSplit(){
+function togglePktSplit(recipeId){
   const checked=document.getElementById('mpkts-split')?.checked;
-  const fields=document.getElementById('mpkts-split-fields');
-  if(fields) fields.style.display=checked?'block':'none';
+  const divSel=document.getElementById('mpkts-div');
+  const preview=document.getElementById('mpkts-split-preview');
+  const previewText=document.getElementById('mpkts-preview-text');
+  if(divSel) divSel.style.display=checked?'inline-block':'none';
+  if(preview) preview.style.display=checked?'block':'none';
+  if(!checked||!recipeId) return;
+  const r=state.db.recipes.find(x=>x.id===recipeId);
+  if(!r||!r.pktG) return;
+  const divisor=parseInt(divSel?.value)||2;
+  const unidades=parseInt(document.getElementById('mper')?.value)||(r.defQty||30);
+  const totalPkts=unidades*divisor;
+  const gPorPkt=Math.round(r.pktG/divisor);
+  if(previewText) previewText.textContent=`📦 ${totalPkts} pacotes de ${gPorPkt}g (÷${divisor} por unidade)`;
 }
 
 function adjPerUnid(id,delta){
@@ -1474,9 +1474,22 @@ const TEXT_PERSONAL   = [143,163,66];
 const TEXT_MP         = [150,30,20];
 
 // ── GERAR PDF ────────────────────────────────────────────
+// helper: desenha assinaturas no final de cada página de tutor
+function _drawSig(y, L, R, PH){
+  const sigY=Math.min(y, PH-16);
+  const doc=window._pdfDoc; if(!doc) return;
+  doc.setFontSize(7); doc.setFont('helvetica','normal');
+  doc.text('Data fabricação: ___/___/______', L, sigY);
+  doc.line(L, sigY+7, L+78, sigY+7);
+  doc.text('Responsável', L, sigY+10);
+  doc.line(120, sigY+7, R, sigY+7);
+  doc.text('Validação técnica', 120, sigY+10);
+}
+
 function gerarRelatorio(){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  window._pdfDoc=doc;
   const sel=state.today.selected;
   const mp=computeMP(sel);
   const totalMP=mp.reduce((a,x)=>a+x.total,0);
@@ -1760,60 +1773,74 @@ function gerarRelatorio(){
       // dividir em grupos de 4
       for(let gi=0;gi<items.length;gi+=4){
         const grupo=items.slice(gi,gi+4);
-        doc.addPage(); pageHeader(); y=27;
+        doc.addPage(); pageHeader();
+        let py=27;
 
         // título do tutor
         doc.setFillColor(...COR_PERSONAL);
-        doc.rect(L,y,W,7,'F');
+        doc.rect(L,py,W,7,'F');
         doc.setTextColor(...BRANCO); doc.setFontSize(9); doc.setFont('helvetica','bold');
-        doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, y+4.8);
-        doc.setTextColor(26,29,35); y+=9;
+        doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, py+4.8);
+        doc.setTextColor(26,29,35); py+=9;
 
-        // grade 2×2 com alturas dinâmicas
         const cols=2;
         const bw=(W-4)/cols;
-        const sigH=22;
-        const rowGap=4;
-        const baseBh=Math.floor((PH-y-sigH-rowGap)/2);
+        const sigH=24; // espaço para assinaturas
+        const rowGap=3;
+        const pageLimit=PH-sigH; // limite antes das assinaturas
 
-        // renderizar em pares de linhas
-        let rowY=y;
+        // calcular altura necessária para cada receita
+        const calcBh=(s)=>{
+          const r=s.recipe;
+          const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
+          const totalKg=r.ingredients.reduce((a,i)=>a+i.q*mult,0)/1000;
+          const wH=totalKg>32?8:0;
+          const oH=r.obs?9:0;
+          const nI=r.ingredients.length;
+          const minLineH=4.5;
+          return 7+wH+3+6+(nI*minLineH)+5+oH+4;
+        };
+
+        // renderizar em pares
+        let rowY=py;
         for(let ri=0;ri<grupo.length;ri+=cols){
           const pair=grupo.slice(ri,ri+cols);
-          // calcular altura necessária para cada receita do par
-          const pairHeights=pair.map(s=>{
-            const r=s.recipe;
-            const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
-            const totalKg=r.ingredients.reduce((a,i)=>a+i.q*mult,0)/1000;
-            const warnH=totalKg>32?8:0;
-            const obsH=r.obs?9:0;
-            const nIngs=r.ingredients.length;
-            const needed=7+warnH+3+7+(nIngs*5)+5+obsH+4;
-            return Math.max(baseBh, needed);
-          });
-          const rowH=Math.max(...pairHeights);
+          const pairH=pair.map(s=>calcBh(s));
+          const rowH=Math.max(...pairH);
+
+          // verificar se cabe na página atual
+          if(rowY+rowH>pageLimit){
+            // não cabe — desenhar assinaturas e nova página
+            _drawSig(rowY, L, R, PH);
+            doc.addPage(); pageHeader();
+            rowY=27;
+            // título continuação
+            doc.setFillColor(...COR_PERSONAL);
+            doc.rect(L,rowY,W,7,'F');
+            doc.setTextColor(...BRANCO); doc.setFontSize(9); doc.setFont('helvetica','bold');
+            doc.text(`${tutor.toUpperCase()} (cont.)`, L+2, rowY+4.8);
+            doc.setTextColor(26,29,35); rowY+=9;
+          }
 
           pair.forEach((s,ci)=>{
             const r=s.recipe;
             const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
             const sp=s.splitPkts;
-            const emb=sp&&sp.total&&sp.g
-              ? `** ${sp.total} pcts de ${sp.g}g`
-              : (r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
-            const bx=L+ci*(bw+4);
-            drawRecipeBox(bx, rowY, bw, rowH, r, mult, emb);
+            let emb;
+            if(sp&&sp.total&&sp.g){
+              emb=`** ${sp.total} pcts de ${sp.g}g`;
+            } else if(r.pktG){
+              emb=`${mult} unid×${r.pktG}g`;
+            } else {
+              emb=`${mult} unid`;
+            }
+            drawRecipeBox(L+ci*(bw+4), rowY, bw, rowH, r, mult, emb);
           });
           rowY+=rowH+rowGap;
         }
 
-        // assinaturas logo abaixo do último row
-        const sigY=Math.min(rowY+2, PH-18);
-        doc.setFontSize(7); doc.setFont('helvetica','normal');
-        doc.text('Data fabricação: ___/___/______', L, sigY);
-        doc.line(L, sigY+8, L+80, sigY+8);
-        doc.text('Responsável', L, sigY+11);
-        doc.line(120, sigY+8, R, sigY+8);
-        doc.text('Validação técnica', 120, sigY+11);
+        // assinaturas no final
+        _drawSig(rowY+2, L, R, PH);
       }
     });
   }
