@@ -1489,14 +1489,19 @@ function gerarRelatorio(){
       return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
     });
     const footerH=5;
-    const availH=bh-7-footerH-2; // altura disponível entre header e footer
-    const lineH=availH/Math.max(ings.length,1);
-    const fontSize=Math.min(7, Math.max(5, lineH*0.65));
-    let iy=y+9;
+    const obsH=r.obs?8:0; // espaço reservado para obs se houver
+    const headerH=7;
+    const padding=2;
+    const availH=bh-headerH-footerH-obsH-padding;
+    // lineH calculado para caber TODOS os ingredientes com margem de segurança
+    const lineH=Math.min(10, (availH-2)/Math.max(ings.length,1));
+    const fontSize=Math.min(7, Math.max(5, lineH*0.7));
+    let iy=y+headerH+2+fontSize; // primeiro baseline logo após o header
 
     doc.setFontSize(fontSize);
     ings.forEach(ing=>{
-      if(iy+lineH>y+bh-footerH-1) return;
+      // limite seguro: não entrar na área do rodapé (nem obs)
+      if(iy > y+bh-footerH-obsH-3) return;
       const tot=ing.q*mult;
       const totStr=tot>=1000?(tot/1000).toFixed(2)+'kg':Math.round(tot)+'g';
       const maxChars=Math.floor((bw-18)/fontSize*2.2);
@@ -1657,10 +1662,12 @@ function gerarRelatorio(){
         doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, y+4.8);
         doc.setTextColor(26,29,35); y+=9;
 
-        // grade 2×2
+        // grade 2×2 — bh calculado descontando gap entre rows e espaço de assinaturas
         const cols=2;
-        const bw=(W-4)/cols;   // largura de cada quadrado
-        const bh=(PH-y-30)/2;  // altura de cada quadrado (2 linhas, deixa espaço p/ assinatura)
+        const bw=(W-4)/cols;
+        const sigH=22; // espaço para assinaturas no rodapé
+        const rowGap=4;
+        const bh=Math.floor((PH-y-sigH-rowGap)/2);
 
         grupo.forEach((s,i)=>{
           const r=s.recipe;
@@ -1668,7 +1675,7 @@ function gerarRelatorio(){
           const col=i%cols;
           const row=Math.floor(i/cols);
           const bx=L+col*(bw+4);
-          const by=y+row*(bh+3);
+          const by=y+row*(bh+rowGap);
           const emb=r.pkts&&r.pkts!==r.defQty?`${r.pkts}pcts×${r.pktG}g`:(r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
           drawRecipeBox(bx, by, bw, bh, r, mult, emb);
         });
