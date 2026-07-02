@@ -956,8 +956,9 @@ function editRecipeInProduction(id){
     </div>`;
   } else {
     const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
+    const sp=s.splitPkts||null;
     body=`<div style="margin-bottom:14px">
-      ${r.pktG?`<div style="font-size:12px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 ${r.pktG}g por unidade</div>`:''}
+      ${r.pktG?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 ${r.pktG}g por unidade produzida</div>`:''}
       <div class="section-label">Unidades a produzir (dias)</div>
       <div class="pkt-stepper">
         <button onclick="modalAdj('mper',-5)">−5</button>
@@ -965,6 +966,25 @@ function editRecipeInProduction(id){
         <input type="number" id="mper" min="1" value="${unidades}" style="width:64px;text-align:center;font-size:16px;font-weight:700">
         <button onclick="modalAdj('mper',1)">+</button>
         <button onclick="modalAdj('mper',5)">+5</button>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px;background:var(--bg)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="mpkts-split" ${sp?'checked':''} onchange="togglePktSplit()" style="width:16px;height:16px">
+          Dividir pacotes nessa produção
+        </label>
+        <div id="mpkts-split-fields" style="display:${sp?'block':'none'};margin-top:10px">
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Ex: 1 unidade produzida → 2 pacotes menores</div>
+          <div class="row2">
+            <div class="field" style="margin-bottom:0">
+              <label>Total de pacotes</label>
+              <input type="number" id="mpkts-total" min="1" placeholder="Ex: 60" value="${sp?sp.total:''}">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Peso por pacote (g)</label>
+              <input type="number" id="mpkts-g" min="1" placeholder="Ex: 328" value="${sp?sp.g:''}">
+            </div>
+          </div>
+        </div>
       </div>
     </div>`;
   }
@@ -1022,11 +1042,9 @@ function openAddRecipeModal(id){
     </div>`;
   } else {
     const pad=r.defQty||30;
-    const pktsInfo=r.pkts&&r.pkts!==pad?`<div style="font-size:11px;color:var(--blue);font-weight:600;margin-top:4px">📦 Embalagem: ${r.pkts} pacotes de ${r.pktG||'?'}g</div>`
-      :(r.pktG?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-top:4px">📦 ${embStr(r)}</div>`:'');
     body=`<div style="margin-bottom:14px">
-      ${pktsInfo}
-      <div class="section-label" style="margin-top:10px">Unidades a produzir (dias)</div>
+      ${r.pktG?`<div style="font-size:11px;color:var(--green-dark);font-weight:600;margin-bottom:10px">📦 ${r.pktG}g por unidade produzida</div>`:''}
+      <div class="section-label">Unidades a produzir (dias)</div>
       <div class="pkt-stepper">
         <button onclick="modalAdj('mper',-5)">−5</button>
         <button onclick="modalAdj('mper',-1)">−</button>
@@ -1034,7 +1052,26 @@ function openAddRecipeModal(id){
         <button onclick="modalAdj('mper',1)">+</button>
         <button onclick="modalAdj('mper',5)">+5</button>
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão: <strong>${pad} unidades</strong>${r.pktG?` · ${r.pktG}g por unidade`:''}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Padrão: <strong>${pad} unidades</strong></div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px;background:var(--bg)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="mpkts-split" onchange="togglePktSplit()" style="width:16px;height:16px">
+          Dividir pacotes nessa produção
+        </label>
+        <div id="mpkts-split-fields" style="display:none;margin-top:10px">
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Ex: 1 unidade produzida → 2 pacotes menores</div>
+          <div class="row2">
+            <div class="field" style="margin-bottom:0">
+              <label>Total de pacotes</label>
+              <input type="number" id="mpkts-total" min="1" placeholder="Ex: 60">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Peso por pacote (g)</label>
+              <input type="number" id="mpkts-g" min="1" placeholder="Ex: 328">
+            </div>
+          </div>
+        </div>
+      </div>
     </div>`;
   }
   openModal(`<div class="modal-title">${recName(r)} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
@@ -1191,11 +1228,22 @@ function confirmAddRecipe(id){
     state.today.selected[id]={recipe:r,p200,p500,customs:[...customs]};
   } else {
     const unidades=parseInt(document.getElementById('mper')?.value)||(r.defQty||30);
-    state.today.selected[id]={recipe:r, unidades};
+    const splitOn=document.getElementById('mpkts-split')?.checked||false;
+    const splitTotal=splitOn?parseInt(document.getElementById('mpkts-total')?.value)||null:null;
+    const splitG=splitOn?parseInt(document.getElementById('mpkts-g')?.value)||null:null;
+    state.today.selected[id]={recipe:r, unidades,
+      splitPkts: splitOn&&splitTotal&&splitG ? {total:splitTotal, g:splitG} : null
+    };
   }
   window._modalCustoms=[];
   closeModal(); renderProducao();
   toast('✅ Adicionado à produção!');
+}
+
+function togglePktSplit(){
+  const checked=document.getElementById('mpkts-split')?.checked;
+  const fields=document.getElementById('mpkts-split-fields');
+  if(fields) fields.style.display=checked?'block':'none';
 }
 
 function adjPerUnid(id,delta){
@@ -1574,8 +1622,24 @@ function gerarRelatorio(){
       const r=s.recipe;
       const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
       const tg=unidades*(r.pktG||0);
-      const emb=r.pkts&&r.pkts!==r.defQty?`${r.pkts} pcts de ${r.pktG}g`:(r.pktG?`${r.pkts||unidades} pcts de ${r.pktG}g`:'—');
-      return [`${r.tutor} — ${r.dog}`, r.cat, `${unidades} unid`, emb, tg>0?(tg/1000).toFixed(2)+' kg':'—'];
+      const sp=s.splitPkts;
+      // embalagem: se divisão ativa → mostrar split; senão → unidades × pktG
+      let embLabel, embStyle={};
+      if(sp&&sp.total&&sp.g){
+        embLabel=`** ${sp.total} pcts de ${sp.g}g`;
+        embStyle={fontStyle:'bold'};
+      } else if(r.pktG){
+        embLabel=`${unidades} pcts de ${r.pktG}g`;
+      } else {
+        embLabel='—';
+      }
+      return [
+        `${r.tutor} — ${r.dog}`,
+        r.cat,
+        `${unidades} unid`,
+        {content:embLabel, styles:embStyle},
+        tg>0?(tg/1000).toFixed(2)+' kg':'—'
+      ];
     });
     doc.autoTable({startY:y,head:[['Tutor / Pet','Sabor','Unidades','Embalagem','MP Total']],body:pedRowsPer,
       styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:COR_PEDIDOS_L,textColor:TEXT_PEDIDOS,fontStyle:'bold',fontSize:8},
@@ -1676,7 +1740,10 @@ function gerarRelatorio(){
           const row=Math.floor(i/cols);
           const bx=L+col*(bw+4);
           const by=y+row*(bh+rowGap);
-          const emb=r.pkts&&r.pkts!==r.defQty?`${r.pkts}pcts×${r.pktG}g`:(r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
+          const sp=s.splitPkts;
+          const emb=sp&&sp.total&&sp.g
+            ? `** ${sp.total} pcts de ${sp.g}g`
+            : (r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
           drawRecipeBox(bx, by, bw, bh, r, mult, emb);
         });
 
