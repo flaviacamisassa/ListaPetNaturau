@@ -1743,44 +1743,52 @@ function gerarRelatorio(){
     Object.entries(tutorMap).forEach(([tutor,items])=>{
       for(let gi=0;gi<items.length;gi+=4){
         const grupo=items.slice(gi,gi+4);
-        doc.addPage(); pageHeader();
-        const py=36; // 27 cabeçalho + 9 título
+        doc.addPage();
+        pageHeader(); // ocupa 0-24mm
 
-        // título do tutor
+        // ── TÍTULO DO TUTOR (27-34mm) ──────────────────────────
+        const TITULO_Y=27, TITULO_H=7;
         doc.setFillColor(...COR_PERSONAL);
-        doc.rect(L,27,W,7,'F');
-        doc.setTextColor(...BRANCO); doc.setFontSize(9); doc.setFont('helvetica','bold');
-        doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, 31.8);
+        doc.rect(L, TITULO_Y, W, TITULO_H, 'F');
+        doc.setTextColor(...BRANCO);
+        doc.setFontSize(9); doc.setFont('helvetica','bold');
+        const parteStr=items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:'';
+        doc.text(`${tutor.toUpperCase()}${parteStr}`, L+2, TITULO_Y+4.8);
         doc.setTextColor(26,29,35);
 
-        // ══ ASSINATURAS SEMPRE NO RODAPÉ FIXO ══
-        const sigY=PH-15;
-        doc.setFontSize(6.5); doc.setFont('helvetica','normal');
-        doc.text('Data fabricação: ___/___/______', L, sigY);
-        doc.line(L, sigY+6, L+75, sigY+6);
-        doc.text('Responsável', L, sigY+9);
-        doc.line(122, sigY+6, R, sigY+6);
-        doc.text('Validação técnica', 122, sigY+9);
+        // ── ASSINATURAS — RODAPÉ FIXO (nunca se move) ──────────
+        const SIG_Y=PH-14; // 283mm — abaixo de tudo
+        doc.setFontSize(6); doc.setFont('helvetica','normal');
+        doc.text('Data fabricação: ___/___/______', L, SIG_Y);
+        doc.line(L,    SIG_Y+5.5, L+72,  SIG_Y+5.5);
+        doc.text('Responsável', L, SIG_Y+8.5);
+        doc.line(120,  SIG_Y+5.5, R,     SIG_Y+5.5);
+        doc.text('Validação técnica', 120, SIG_Y+8.5);
 
-        // ══ GRADE 2×2 COM BH FIXO E IDEAL ══
-        const cols=2;
-        const bw=(W-4)/cols;
-        const rowGap=3;
-        const nRows=Math.ceil(grupo.length/cols);
-        // bh = espaço disponível dividido igualmente pelos rows
-        const bh=Math.floor((sigY-py-4-(rowGap*(nRows-1)))/nRows);
+        // ── GRADE 2×2 — BH CALCULADO DO ESPAÇO DISPONÍVEL ─────
+        const GRADE_TOP = TITULO_Y + TITULO_H + 2; // 36mm
+        const GRADE_BOT = SIG_Y - 3;               // 280mm
+        const GRADE_H   = GRADE_BOT - GRADE_TOP;   // 244mm disponíveis
+
+        const COLS=2;
+        const BW=(W-4)/COLS;
+        const GAP=3;
+        const N_ROWS=Math.ceil(grupo.length/COLS); // 1 ou 2
+        // BH = espaço total ÷ número de rows, descontando gaps
+        const BH=Math.floor((GRADE_H - GAP*(N_ROWS-1)) / N_ROWS);
 
         grupo.forEach((s,i)=>{
           const r=s.recipe;
           const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
           const sp=s.splitPkts;
-          let emb;
-          if(sp&&sp.total&&sp.g) emb=`** ${sp.total} pcts de ${sp.g}g`;
-          else if(r.pktG) emb=`${mult} unid×${r.pktG}g`;
-          else emb=`${mult} unid`;
-          const col=i%cols;
-          const row=Math.floor(i/cols);
-          drawRecipeBox(L+col*(bw+4), py+row*(bh+rowGap), bw, bh, r, mult, emb);
+          const emb = sp&&sp.total&&sp.g
+            ? `** ${sp.total} pcts de ${sp.g}g`
+            : (r.pktG ? `${mult} unid×${r.pktG}g` : `${mult} unid`);
+          const col  = i % COLS;
+          const row  = Math.floor(i / COLS);
+          const bx   = L + col*(BW+4);
+          const by   = GRADE_TOP + row*(BH+GAP);
+          drawRecipeBox(bx, by, BW, BH, r, mult, emb);
         });
       }
     });
