@@ -1512,23 +1512,53 @@ function gerarRelatorio(){
 
   // helper: quadrado de receita (para grade de personalizadas)
   const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
-    // sem preenchimento de fundo — economiza tinta
-    doc.setDrawColor(181,205,90);
-    doc.setLineWidth(0.5);
-    doc.rect(x, y, bw, bh, 'S'); // só borda, sem fill
+    // Calcular alturas necessárias
+    const totalKgBox=r.ingredients.reduce((a,i)=>a+i.q*mult,0)/1000;
+    const boxDividir=totalKgBox>32;
+    const headerH=7;
+    const warnH=boxDividir?8:0;
+    const footerH=5;
+    const obsH=r.obs?9:0;
+    const minLineH=5; // mínimo legível
+    const maxLineH=10;
+    const nIngs=r.ingredients.length;
 
-    // Header do quadrado
+    // Calcular lineH ideal para caber no bh disponível
+    const availH=bh-headerH-warnH-footerH-obsH-3;
+    const lineH=Math.min(maxLineH, Math.max(minLineH, (availH-2)/Math.max(nIngs,1)));
+    const fontSize=Math.min(7, Math.max(5, lineH*0.72));
+
+    // Se mesmo no mínimo não couber, aumentar bh para caber todos
+    const neededH=headerH+warnH+3+fontSize+(nIngs*lineH)+footerH+obsH+4;
+    const actualBh=Math.max(bh, neededH);
+
+    // Redesenhar borda com altura real
+    doc.setDrawColor(181,205,90); doc.setLineWidth(0.5);
+    doc.rect(x, y, bw, actualBh, 'S');
+
+    // Header verde
     doc.setFillColor(181,205,90);
-    doc.rect(x, y, bw, 7, 'F');
+    doc.rect(x, y, bw, headerH, 'F');
     doc.setTextColor(26,29,35);
     doc.setFontSize(8); doc.setFont('helvetica','bold');
     const dogLabel=`${r.dog} — ${r.cat}`;
-    doc.text(dogLabel.length>26?dogLabel.substring(0,25)+'…':dogLabel, x+2, y+4.5);
-    doc.setFontSize(7); doc.setFont('helvetica','normal');
-    doc.text(label, x+bw-2, y+4.5, {align:'right'});
+    doc.text(dogLabel.length>26?dogLabel.substring(0,25)+'…':dogLabel, x+2, y+4.8);
+    doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+    doc.text(label, x+bw-2, y+4.8, {align:'right'});
     doc.setTextColor(26,29,35);
 
-    // Ingredientes — coluna única: nome à esquerda, quantidade à direita
+    // Aviso 32kg
+    if(boxDividir){
+      doc.setFillColor(210,234,248);
+      doc.rect(x, y+headerH, bw, warnH, 'F');
+      doc.setDrawColor(52,152,219); doc.setLineWidth(0.3);
+      doc.rect(x, y+headerH, bw, warnH, 'S');
+      doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(192,57,43);
+      doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x  (total: ${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+5.2, {align:'center'});
+      doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
+    }
+
+    // Ingredientes ordenados
     const catOrder={proteina:0,vegetal:1,suplemento:2,cru:0};
     const ings=r.ingredients.slice().sort((a,b)=>{
       const ca=catOrder[categorizaIngrediente(normalizeName(a.n))]??2;
@@ -1536,20 +1566,10 @@ function gerarRelatorio(){
       if(ca!==cb) return ca-cb;
       return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
     });
-    const footerH=5;
-    const obsH=r.obs?8:0; // espaço reservado para obs se houver
-    const headerH=7;
-    const padding=2;
-    const availH=bh-headerH-footerH-obsH-padding;
-    // lineH calculado para caber TODOS os ingredientes com margem de segurança
-    const lineH=Math.min(10, (availH-2)/Math.max(ings.length,1));
-    const fontSize=Math.min(7, Math.max(5, lineH*0.7));
-    let iy=y+headerH+2+fontSize; // primeiro baseline logo após o header
 
+    let iy=y+headerH+warnH+2+fontSize;
     doc.setFontSize(fontSize);
     ings.forEach(ing=>{
-      // limite seguro: não entrar na área do rodapé (nem obs)
-      if(iy > y+bh-footerH-obsH-3) return;
       const tot=ing.q*mult;
       const totStr=tot>=1000?(tot/1000).toFixed(2)+'kg':Math.round(tot)+'g';
       const maxChars=Math.floor((bw-18)/fontSize*2.2);
@@ -1557,34 +1577,36 @@ function gerarRelatorio(){
       const displayName=(name.length>maxChars?name.substring(0,maxChars-1)+'…':name)+(ing.raw?' 🥩':'');
       doc.setFont('helvetica','normal'); doc.text(displayName, x+2, iy);
       doc.setFont('helvetica','bold'); doc.text(totStr, x+bw-2, iy, {align:'right'});
-      // linha separadora fina
       doc.setDrawColor(220,235,220); doc.setLineWidth(0.1);
       doc.line(x+2, iy+1, x+bw-2, iy+1);
       doc.setDrawColor(181,205,90); doc.setLineWidth(0.5);
       iy+=lineH;
     });
 
-    // Total no rodapé do quadrado
+    // Observações (acima do rodapé)
+    if(r.obs){
+      const obsY=y+actualBh-footerH-obsH;
+      doc.setFillColor(255,253,231);
+      doc.rect(x+1, obsY, bw-2, obsH-1, 'F');
+      doc.setDrawColor(249,168,37); doc.setLineWidth(0.2);
+      doc.rect(x+1, obsY, bw-2, obsH-1, 'S');
+      doc.setFontSize(6); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+      const obsLines=doc.splitTextToSize(`⚠ ${r.obs}`, bw-6);
+      obsLines.slice(0,2).forEach((ln,li)=>doc.text(ln, x+3, obsY+3.5+(li*4)));
+      doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
+    }
+
+    // Rodapé verde
     doc.setFillColor(...COR_PERSONAL_L);
-    doc.rect(x, y+bh-footerH, bw, footerH, 'F');
+    doc.rect(x, y+actualBh-footerH, bw, footerH, 'F');
     doc.setFontSize(7); doc.setFont('helvetica','bold');
     doc.setTextColor(...TEXT_PERSONAL);
-    doc.text('TOTAL MP:', x+2, y+bh-1.5);
+    doc.text('TOTAL MP:', x+2, y+actualBh-1.5);
     const mpStr=r.ingredients.reduce((a,i)=>a+i.q*mult,0);
-    doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+bh-1.5, {align:'right'});
+    doc.text((mpStr>=1000?(mpStr/1000).toFixed(2)+'kg':Math.round(mpStr)+'g'), x+bw-2, y+actualBh-1.5, {align:'right'});
     doc.setTextColor(26,29,35);
 
-    // observações em destaque amarelo dentro do quadrado
-    if(r.obs){
-      const obsY=y+bh-footerH-8;
-      doc.setFillColor(255,253,231);
-      doc.rect(x+1, obsY, bw-2, 7.5, 'F');
-      doc.setFontSize(6); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
-      const obsText=`⚠ ${r.obs}`;
-      const obsLines=doc.splitTextToSize(obsText, bw-6);
-      doc.text(obsLines[0], x+2, obsY+4.5);
-      doc.setTextColor(26,29,35);
-    }
+    return actualBh; // retorna altura real usada
   };
 
   // ══════════════════════════════════════
@@ -1669,35 +1691,56 @@ function gerarRelatorio(){
       const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
       if(!tg) return;
       const mult=tg/1000;
+      const totalKgRecipe=r.ingredients.reduce((a,ing)=>a+ing.q*mult,0)/1000;
+      const dividir=totalKgRecipe>32;
+      const partes=dividir?2:1;
+
       const catOrd={proteina:0,vegetal:1,suplemento:2,cru:0};
-      const rows=r.ingredients.slice().sort((a,b)=>{
+      const ingsSorted=r.ingredients.slice().sort((a,b)=>{
         const ca=catOrd[categorizaIngrediente(normalizeName(a.n))]??2;
         const cb=catOrd[categorizaIngrediente(normalizeName(b.n))]??2;
         if(ca!==cb) return ca-cb;
         return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
-      }).map(ing=>{
-        const tot=ing.q*mult;
-        return [ing.n+(ing.raw?' 🥩':''), tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
       });
-      // se não cabe na página, nova página
-      const estimH=rows.length*5+14;
-      if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)',L,W,COR_COMERCIAL,BRANCO);}
-      doc.autoTable({startY:y,
-        head:[[{content:`${r.name.replace('Dieta Comercial ','')}${r.barf?' [BARF]':''} — ${mult.toFixed(2)} kg`,colSpan:2,
-          styles:{fillColor:COR_COMERCIAL_L,textColor:TEXT_COMERCIAL,fontStyle:'bold',fontSize:8}}]],
-        body:rows,styles:{fontSize:7.5,cellPadding:1.8},
-        columnStyles:{0:{cellWidth:140},1:{cellWidth:50,halign:'right',fontStyle:'bold'}},
-        margin:{left:L,right:10}});
-      y=doc.lastAutoTable.finalY+2;
-      if(r.obs){
-        doc.setFillColor(255,253,231); doc.rect(L,y,W,8,'F');
-        doc.setDrawColor(249,168,37); doc.setLineWidth(0.3); doc.rect(L,y,W,8,'S');
-        doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
-        doc.text(`⚠ OBS: ${r.obs}`, L+2, y+5.2);
-        doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
-        y+=9;
+
+      for(let p=0;p<partes;p++){
+        const multP=mult/partes;
+        const rows=ingsSorted.map(ing=>{
+          const tot=ing.q*multP;
+          return [ing.n+(ing.raw?' 🥩':''), tot>=1000?(tot/1000).toFixed(3)+' kg':Math.round(tot)+' g'];
+        });
+        const parteLabel=dividir?` — PARTE ${p+1}/2 (${(totalKgRecipe/2).toFixed(2)}kg)`:`— ${mult.toFixed(2)} kg`;
+        const estimH=rows.length*5+14+(dividir?10:0)+(r.obs?10:0);
+        if(y+estimH>PH-20){doc.addPage();pageHeader();y=27;y=secTitle(y,'INGREDIENTES — DIETAS COMERCIAIS (cont.)',L,W,COR_COMERCIAL,BRANCO);}
+
+        // aviso RECEITA DIVIDIDA
+        if(dividir){
+          doc.setFillColor(210,234,248); // azul claro
+          doc.rect(L,y,W,9,'F');
+          doc.setDrawColor(52,152,219); doc.setLineWidth(0.5); doc.rect(L,y,W,9,'S');
+          doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(192,57,43);
+          doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x (TOTAL: ${totalKgRecipe.toFixed(2)}kg)`, PW/2, y+6, {align:'center'});
+          doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
+          y+=11;
+        }
+
+        doc.autoTable({startY:y,
+          head:[[{content:`${r.name.replace('Dieta Comercial ','')}${r.barf?' [BARF]':''}${parteLabel}`,colSpan:2,
+            styles:{fillColor:COR_COMERCIAL_L,textColor:TEXT_COMERCIAL,fontStyle:'bold',fontSize:8}}]],
+          body:rows,styles:{fontSize:7.5,cellPadding:1.8},
+          columnStyles:{0:{cellWidth:140},1:{cellWidth:50,halign:'right',fontStyle:'bold'}},
+          margin:{left:L,right:10}});
+        y=doc.lastAutoTable.finalY+2;
+        if(r.obs){
+          doc.setFillColor(255,253,231); doc.rect(L,y,W,8,'F');
+          doc.setDrawColor(249,168,37); doc.setLineWidth(0.3); doc.rect(L,y,W,8,'S');
+          doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+          doc.text(`⚠ OBS: ${r.obs}`, L+2, y+5.2);
+          doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
+          y+=9;
+        }
+        y+=3;
       }
-      y+=3;
     });
   }
 
@@ -1726,29 +1769,45 @@ function gerarRelatorio(){
         doc.text(`${tutor.toUpperCase()}${items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:''}`, L+2, y+4.8);
         doc.setTextColor(26,29,35); y+=9;
 
-        // grade 2×2 — bh calculado descontando gap entre rows e espaço de assinaturas
+        // grade 2×2 com alturas dinâmicas
         const cols=2;
         const bw=(W-4)/cols;
-        const sigH=22; // espaço para assinaturas no rodapé
+        const sigH=22;
         const rowGap=4;
-        const bh=Math.floor((PH-y-sigH-rowGap)/2);
+        const baseBh=Math.floor((PH-y-sigH-rowGap)/2);
 
-        grupo.forEach((s,i)=>{
-          const r=s.recipe;
-          const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
-          const col=i%cols;
-          const row=Math.floor(i/cols);
-          const bx=L+col*(bw+4);
-          const by=y+row*(bh+rowGap);
-          const sp=s.splitPkts;
-          const emb=sp&&sp.total&&sp.g
-            ? `** ${sp.total} pcts de ${sp.g}g`
-            : (r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
-          drawRecipeBox(bx, by, bw, bh, r, mult, emb);
-        });
+        // renderizar em pares de linhas
+        let rowY=y;
+        for(let ri=0;ri<grupo.length;ri+=cols){
+          const pair=grupo.slice(ri,ri+cols);
+          // calcular altura necessária para cada receita do par
+          const pairHeights=pair.map(s=>{
+            const r=s.recipe;
+            const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
+            const totalKg=r.ingredients.reduce((a,i)=>a+i.q*mult,0)/1000;
+            const warnH=totalKg>32?8:0;
+            const obsH=r.obs?9:0;
+            const nIngs=r.ingredients.length;
+            const needed=7+warnH+3+7+(nIngs*5)+5+obsH+4;
+            return Math.max(baseBh, needed);
+          });
+          const rowH=Math.max(...pairHeights);
 
-        // assinaturas no final de cada página de tutor
-        const sigY=PH-18;
+          pair.forEach((s,ci)=>{
+            const r=s.recipe;
+            const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
+            const sp=s.splitPkts;
+            const emb=sp&&sp.total&&sp.g
+              ? `** ${sp.total} pcts de ${sp.g}g`
+              : (r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
+            const bx=L+ci*(bw+4);
+            drawRecipeBox(bx, rowY, bw, rowH, r, mult, emb);
+          });
+          rowY+=rowH+rowGap;
+        }
+
+        // assinaturas logo abaixo do último row
+        const sigY=Math.min(rowY+2, PH-18);
         doc.setFontSize(7); doc.setFont('helvetica','normal');
         doc.text('Data fabricação: ___/___/______', L, sigY);
         doc.line(L, sigY+8, L+80, sigY+8);
