@@ -1459,8 +1459,9 @@ const TEXT_MP         = [150,30,20];
 function _drawSig(y, L, R, PH){
   const sigY=Math.min(y, PH-16);
   const doc=window._pdfDoc; if(!doc) return;
+  const df=window._dateFab||'___/___/______';
   doc.setFontSize(7); doc.setFont('helvetica','normal');
-  doc.text('Data fabricação: ___/___/______', L, sigY);
+  doc.text(`Data fabricação: ${df}`, L, sigY);
   doc.line(L, sigY+7, L+78, sigY+7);
   doc.text('Responsável', L, sigY+10);
   doc.line(120, sigY+7, R, sigY+7);
@@ -1476,6 +1477,11 @@ function gerarRelatorio(){
   const totalMP=mp.reduce((a,x)=>a+x.total,0);
   const dateStr=fmtDate(state.today.date);
   const dateShort=fmtDateShort(state.today.date).replace(/\//g,'-');
+  // Lote = data ao contrário, tudo junto sem separadores: YYYYMMDD
+  const [dY,dM,dD]=(state.today.date||'').split('-');
+  const lote=`${dY||''}${dM||''}${dD||''}`;
+  const dateFab=fmtDateShort(state.today.date);
+  window._dateFab=dateFab; // para _drawSig acessar
   const L=10, R=200, W=190, PW=210, PH=297;
 
   // helper: cabeçalho de página
@@ -1487,8 +1493,8 @@ function gerarRelatorio(){
     doc.text('PetNaturau — Lista de Produção', L, 10);
     doc.setFontSize(8); doc.setFont('helvetica','normal');
     doc.text(dateStr, L, 16);
-    doc.text('Data fabricação: ___/___/______', L, 21);
-    doc.text('Lote: ___________________', 110, 21);
+    doc.text(`Data fabricação: ${dateFab}`, L, 21);
+    doc.text(`Lote: ${lote}`, 110, 21);
     doc.text(`Pág. ${doc.internal.getNumberOfPages()}`, 190, 10, {align:'right'});
     doc.setTextColor(26,29,35);
   };
@@ -1759,7 +1765,7 @@ function gerarRelatorio(){
         // ── ASSINATURAS — RODAPÉ FIXO (nunca se move) ──────────
         const SIG_Y=PH-14; // 283mm — abaixo de tudo
         doc.setFontSize(6); doc.setFont('helvetica','normal');
-        doc.text('Data fabricação: ___/___/______', L, SIG_Y);
+        doc.text(`Data fabricação: ${dateFab}`, L, SIG_Y);
         doc.line(L,    SIG_Y+5.5, L+72,  SIG_Y+5.5);
         doc.text('Responsável', L, SIG_Y+8.5);
         doc.line(120,  SIG_Y+5.5, R,     SIG_Y+5.5);
@@ -1847,8 +1853,8 @@ function gerarRelatorio(){
   // assinaturas
   if(y>PH-20){doc.addPage();pageHeader();y=27;}
   doc.setFontSize(8); doc.setFont('helvetica','normal');
-  doc.text('Data de fabricação: _____ / _____ / _______',L,y);
-  doc.text('Data: _____ / _____ / _______',130,y); y+=12;
+  doc.text(`Data de fabricação: ${dateFab}`,L,y);
+  doc.text(`Lote: ${lote}`,130,y); y+=12;
   doc.line(L,y,L+76,y); doc.line(130,y,R,y); y+=4;
   doc.setFontSize(7);
   doc.text('Responsável pelo preenchimento',L,y);
