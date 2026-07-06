@@ -603,35 +603,58 @@ function updateComCell(rowId, field, value){
   syncComTableToSelected();
 }
 
+function setComFixed(recipeId, field, value){
+  if(!state.comFixed) state.comFixed={};
+  if(!state.comFixed[recipeId]) state.comFixed[recipeId]={p200:0,p500:0};
+  state.comFixed[recipeId][field]=parseInt(value)||0;
+  syncComTableToSelected();
+}
+
 function syncComTableToSelected(sorted){
-  if(!state.comTable) return;
+  if(!state.comTable) state.comTable={};
+  if(!state.comFixed) state.comFixed={};
   const db=state.db||{};
   const comerciais=db.recipes?.filter(r=>r.type==='comercial'&&!r.barf)||[];
   if(!sorted){
-    const ORDER=['Frango','Boi','Porco','Peru','Pato','Burger Boi','Burger Frango'];
-    sorted=ORDER.map(cat=>comerciais.filter(r=>r.name.toLowerCase().includes(cat.toLowerCase()))[0]).filter(Boolean);
+    const ORDER=['Frango','Boi','Suína','Peru','Pato','Burger Boi','Burger Frango'];
+    sorted=[];
+    ORDER.forEach(cat=>{
+      const match=comerciais.find(r=>{
+        const n=r.name.toLowerCase();
+        if(cat==='Suína') return n.includes('su')&&!n.includes('burger');
+        if(cat==='Burger Boi') return n.includes('burger')&&n.includes('boi');
+        if(cat==='Burger Frango') return n.includes('burger')&&n.includes('frango');
+        return n.includes(cat.toLowerCase())&&!n.includes('burger');
+      });
+      if(match&&!sorted.includes(match)) sorted.push(match);
+    });
     comerciais.forEach(r=>{ if(!sorted.includes(r)) sorted.push(r); });
   }
   sorted.forEach(r=>{
+    const fixed=state.comFixed[r.id]||{};
+    const p200=fixed.p200||0;
+    const p500=fixed.p500||0;
     const customs=[];
     Object.values(state.comTable).forEach(row=>{
       const cell=row.cells?.[r.id];
-      if(cell&&cell.g>0&&cell.qty>0&&row.name){
-        customs.push({name:row.name+(row.bags>0?` (${row.bags} sacola${row.bags!==1?'s':''})`:'')+` — ${cell.qty}×${cell.g}g`, g:cell.g, qty:cell.qty});
+      if(cell?.g>0&&cell?.qty>0&&row.name){
+        const bagStr=row.bags>0?` (${row.bags} sacola${row.bags!==1?'s':''})`:'' ;
+        customs.push({name:`${row.name}${bagStr}`, g:cell.g, qty:cell.qty});
       }
     });
-    const totalG=customs.reduce((a,c)=>a+c.g*c.qty,0);
+    const totalG=p200*200+p500*500+customs.reduce((a,c)=>a+c.g*c.qty,0);
     if(totalG>0){
       if(!state.today.selected[r.id]) state.today.selected[r.id]={};
       state.today.selected[r.id].recipe=r;
-      state.today.selected[r.id].p200=0;
-      state.today.selected[r.id].p500=0;
+      state.today.selected[r.id].p200=p200;
+      state.today.selected[r.id].p500=p500;
       state.today.selected[r.id].customs=customs;
     } else {
       delete state.today.selected[r.id];
     }
   });
 }
+
 
 function renderProducao() {
   const db = state.db;
@@ -659,62 +682,102 @@ function renderProducao() {
     if(!coz.length){
       html+=`<div class="empty"><i class="fas fa-utensils"></i><p>Nenhuma receita cozida cadastrada</p></div>`;
     } else {
-      // ordem fixa das colunas de receitas comerciais
-      const ORDER=['Frango','Boi','Porco','Peru','Pato','Burger Boi','Burger Frango'];
-      const sorted=ORDER.map(cat=>coz.filter(r=>r.name.toLowerCase().includes(cat.toLowerCase()))[0]).filter(Boolean);
-      // adicionar quaisquer receitas não contempladas na ordem
+      // ordem FIXA das colunas
+      const ORDER=['Frango','Boi','Suína','Peru','Pato','Burger Boi','Burger Frango'];
+      const sorted=[];
+      ORDER.forEach(cat=>{
+        const match=coz.find(r=>{
+          const n=r.name.toLowerCase();
+          const c=cat.toLowerCase();
+          if(cat==='Suína') return n.includes('su') && !n.includes('burger');
+          if(cat==='Burger Boi') return n.includes('burger') && n.includes('boi');
+          if(cat==='Burger Frango') return n.includes('burger') && n.includes('frango');
+          return n.includes(c) && !n.includes('burger');
+        });
+        if(match&&!sorted.includes(match)) sorted.push(match);
+      });
       coz.forEach(r=>{ if(!sorted.includes(r)) sorted.push(r); });
 
-      if(!state.comTable) state.comTable={}; // {rowId: {name, bags, cells:{recipeId:{g,qty}}}}
+      if(!state.comTable) state.comTable={};
+      if(!state.comFixed) state.comFixed={}; // {recipeId: {p200, p500}}
 
-      // cabeçalho da tabela
-      const colW=`${Math.floor(100/(sorted.length+2))}%`;
+      const nCols=sorted.length+3; // cliente + sacolas + receitas + botão
+
       let tbl=`<div style="overflow-x:auto;margin-bottom:10px">
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px">
           <thead>
             <tr style="background:var(--green-light)">
-              <th style="padding:6px 4px;text-align:left;border:1px solid var(--border);min-width:90px">Cliente</th>
-              <th style="padding:6px 4px;text-align:center;border:1px solid var(--border);min-width:50px">Sacolas</th>
-              ${sorted.map(r=>`<th style="padding:6px 4px;text-align:center;border:1px solid var(--border);min-width:70px;color:var(--green-dark)">${r.name.replace('Dieta Comercial ','')}</th>`).join('')}
-              <th style="padding:4px;border:1px solid var(--border);width:64px"></th>
+              <th style="padding:6px 4px;text-align:left;border:1px solid var(--border);min-width:100px;position:sticky;left:0;background:var(--green-light)">Cliente</th>
+              <th style="padding:6px 4px;text-align:center;border:1px solid var(--border);min-width:55px">Sacolas</th>
+              ${sorted.map(r=>`<th style="padding:6px 2px;text-align:center;border:1px solid var(--border);min-width:72px;color:var(--green-dark);font-size:10px">${r.name.replace('Dieta Comercial ','')}</th>`).join('')}
+              <th style="border:1px solid var(--border);width:28px"></th>
             </tr>
           </thead>
-          <tbody id="com-table-body">`;
+          <tbody>
+            <!-- LINHA FIXA: Pacotes 200g -->
+            <tr style="background:#F0F7FF">
+              <td style="padding:5px 6px;border:1px solid var(--border);font-weight:700;font-size:11px;color:var(--blue)">📦 Pacotes 200g</td>
+              <td style="border:1px solid var(--border)"></td>
+              ${sorted.map(r=>{
+                const val=(state.comFixed[r.id]?.p200)||0;
+                return `<td style="padding:3px;border:1px solid var(--border);text-align:center">
+                  <input type="number" min="0" placeholder="qtd" value="${val||''}"
+                    oninput="setComFixed('${r.id}','p200',this.value)"
+                    style="width:100%;font-size:11px;text-align:center;border:1px solid var(--border);border-radius:3px;padding:3px;font-weight:600">
+                </td>`;
+              }).join('')}
+              <td style="border:1px solid var(--border)"></td>
+            </tr>
+            <!-- LINHA FIXA: Pacotes 500g -->
+            <tr style="background:#F0F7FF">
+              <td style="padding:5px 6px;border:1px solid var(--border);font-weight:700;font-size:11px;color:var(--blue)">📦 Pacotes 500g</td>
+              <td style="border:1px solid var(--border)"></td>
+              ${sorted.map(r=>{
+                const val=(state.comFixed[r.id]?.p500)||0;
+                return `<td style="padding:3px;border:1px solid var(--border);text-align:center">
+                  <input type="number" min="0" placeholder="qtd" value="${val||''}"
+                    oninput="setComFixed('${r.id}','p500',this.value)"
+                    style="width:100%;font-size:11px;text-align:center;border:1px solid var(--border);border-radius:3px;padding:3px;font-weight:600">
+                </td>`;
+              }).join('')}
+              <td style="border:1px solid var(--border)"></td>
+            </tr>
+            <!-- SEPARADOR -->
+            <tr><td colspan="${nCols}" style="padding:2px;background:var(--border);font-size:9px;text-align:center;color:var(--text-3);font-weight:600">CLIENTES PERSONALIZADOS</td></tr>`;
 
+      // linhas de clientes personalizados
       const rows=Object.entries(state.comTable);
       if(rows.length===0){
-        tbl+=`<tr id="empty-row"><td colspan="${sorted.length+3}" style="text-align:center;padding:14px;color:var(--text-3);font-style:italic">Clique em "+ Adicionar cliente" para começar</td></tr>`;
+        tbl+=`<tr><td colspan="${nCols}" style="text-align:center;padding:12px;color:var(--text-3);font-style:italic;font-size:11px">Clique em "+ Adicionar cliente" para incluir pedidos personalizados</td></tr>`;
       } else {
-        rows.forEach(([rowId, row])=>{
-          tbl+=renderComRow(rowId, row, sorted);
-        });
+        rows.forEach(([rowId, row])=>{ tbl+=renderComRow(rowId, row, sorted); });
       }
+
       tbl+=`</tbody></table></div>
-        <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="addComRow()">
+        <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="addComRow()">
           <i class="fas fa-plus"></i> Adicionar cliente
         </button>`;
 
-      // totais por receita
+      // resumo por receita (fixos + personalizados)
       const totals=sorted.map(r=>{
-        let total=0;
+        let total=(state.comFixed[r.id]?.p200||0)*200+(state.comFixed[r.id]?.p500||0)*500;
         Object.values(state.comTable).forEach(row=>{
           const cell=row.cells?.[r.id];
-          if(cell&&cell.g&&cell.qty) total+=cell.g*cell.qty;
+          if(cell?.g&&cell?.qty) total+=cell.g*cell.qty;
         });
         return {r, total};
       }).filter(x=>x.total>0);
 
       if(totals.length){
-        tbl+=`<div style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:11px">
-          <div style="font-weight:700;color:var(--green-dark);margin-bottom:4px">📦 Resumo por receita:</div>
-          ${totals.map(({r,total})=>`<div style="display:flex;justify-content:space-between;padding:2px 0">
+        tbl+=`<div style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:11px;margin-bottom:6px">
+          <div style="font-weight:700;color:var(--green-dark);margin-bottom:4px">📊 Total por receita:</div>
+          ${totals.map(({r,total})=>`<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">
             <span>${r.name.replace('Dieta Comercial ','')}</span>
             <span style="font-weight:700">${(total/1000).toFixed(2)} kg</span>
           </div>`).join('')}
         </div>`;
       }
 
-      // sincronizar com state.today.selected
       syncComTableToSelected(sorted);
       html+=tbl;
     }
