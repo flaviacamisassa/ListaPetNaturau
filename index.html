@@ -1608,10 +1608,10 @@ const COR_PEDIDOS_L   = [210,234,248];
 const COR_COMERCIAL_L = [253,224,197];
 const COR_PERSONAL_L  = [238,244,208];
 const COR_MP_L        = [253,220,215];
-const TEXT_PEDIDOS    = [21,98,163];
-const TEXT_COMERCIAL  = [154,78,10];
-const TEXT_PERSONAL   = [143,163,66];
-const TEXT_MP         = [150,30,20];
+const TEXT_PEDIDOS    = [26,29,35];
+const TEXT_COMERCIAL  = [26,29,35];
+const TEXT_PERSONAL   = [26,29,35];
+const TEXT_MP         = [26,29,35];
 
 // ── GERAR PDF ────────────────────────────────────────────
 // helper: desenha assinaturas no final de cada página de tutor
@@ -1702,7 +1702,7 @@ function gerarRelatorio(){
     if(boxDividir){
       doc.setFillColor(210,234,248);
       doc.rect(x, y+headerH, bw, warnH, 'F');
-      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(192,57,43);
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
       doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x  (${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+5.2, {align:'center'});
       doc.setTextColor(26,29,35);
     }
@@ -1741,7 +1741,7 @@ function gerarRelatorio(){
       const obsY=y+bh-footerH-obsH;
       doc.setFillColor(255,253,231);
       doc.rect(x+1, obsY, bw-2, obsH-0.5, 'F');
-      doc.setFontSize(5.5); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+      doc.setFontSize(5.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
       const obsLines=doc.splitTextToSize(`⚠ ${r.obs}`, bw-5);
       obsLines.slice(0,2).forEach((ln,li)=>doc.text(ln, x+2, obsY+3+(li*3.5)));
       doc.setTextColor(26,29,35);
@@ -1868,7 +1868,7 @@ function gerarRelatorio(){
           doc.setFillColor(210,234,248); // azul claro
           doc.rect(L,y,W,9,'F');
           doc.setDrawColor(52,152,219); doc.setLineWidth(0.5); doc.rect(L,y,W,9,'S');
-          doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(192,57,43);
+          doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
           doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x (TOTAL: ${totalKgRecipe.toFixed(2)}kg)`, PW/2, y+6, {align:'center'});
           doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
           y+=11;
@@ -1884,7 +1884,7 @@ function gerarRelatorio(){
         if(r.obs){
           doc.setFillColor(255,253,231); doc.rect(L,y,W,8,'F');
           doc.setDrawColor(249,168,37); doc.setLineWidth(0.3); doc.rect(L,y,W,8,'S');
-          doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(230,81,0);
+          doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
           doc.text(`⚠ OBS: ${r.obs}`, L+2, y+5.2);
           doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
           y+=9;
@@ -1967,10 +1967,10 @@ function gerarRelatorio(){
   y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE',L,W,COR_MP,BRANCO);
 
   const CAT_CONFIG={
-    cru:     {label:'🥩 ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:[253,237,236], text:[192,57,43]},
-    proteina:{label:'🥩 PROTEÍNAS (carnes, vísceras, ovos, laticínios)', fill:[254,235,200], text:[174,89,15]},
-    vegetal: {label:'🥿 VEGETAIS E LEGUMES', fill:[232,245,233], text:[46,125,50]},
-    suplemento:{label:'💊 COMPLEMENTOS E SUPLEMENTOS', fill:[232,240,254], text:[30,66,159]},
+    cru:      {label:'🥩 ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:[253,237,236]},
+    proteina: {label:'🥩 PROTEÍNAS (carnes, vísceras, ovos, laticínios)',               fill:[254,235,200]},
+    vegetal:  {label:'🥿 VEGETAIS E LEGUMES',                                            fill:[232,245,233]},
+    suplemento:{label:'💊 COMPLEMENTOS E SUPLEMENTOS',                                   fill:[232,240,254]},
   };
 
   const mpRows=[];
@@ -1980,30 +1980,36 @@ function gerarRelatorio(){
     if(cat!==lastCat){
       const cfg=CAT_CONFIG[cat]||CAT_CONFIG.suplemento;
       mpRows.push([{content:cfg.label,colSpan:7,
-        styles:{fillColor:cfg.fill,textColor:cfg.text,fontStyle:'bold',fontSize:7.5}}]);
+        styles:{fillColor:cfg.fill,textColor:[26,29,35],fontStyle:'bold'}}]);
       lastCat=cat;
     }
     const nomeDisplay=e.name+(normalizeName(e.name)==='Ovo'?` (${Math.round(e.total/50)} unid)`:'');
     mpRows.push([nomeDisplay,e.raw?'Cru':'Cozido',Math.round(e.total)+' g',(e.total/1000).toFixed(3)+' kg','','',e.raw?'—':'']);
   });
   mpRows.push([
-    {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
-    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
-    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:TEXT_MP}},
+    {content:'TOTAL GERAL',colSpan:2,styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:[26,29,35]}},
+    {content:Math.round(totalMP)+' g',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:[26,29,35]}},
+    {content:(totalMP/1000).toFixed(3)+' kg',styles:{fontStyle:'bold',fillColor:COR_MP_L,textColor:[26,29,35]}},
     {content:'',colSpan:3,styles:{fillColor:COR_MP_L}}
   ]);
 
-  // calcula font size dinâmico para caber em uma página
-  const availH = PH - y - 35;
-  const rowH = availH / (mpRows.length + 1);
-  const fontSize = Math.min(7.5, Math.max(5.5, rowH * 0.55));
-  const cellPad = Math.min(2, Math.max(1, rowH * 0.2));
+  // ── FONT SIZE DINÂMICO: maximizar para caber tudo em 1 página ──
+  const availH = PH - y - 30; // espaço disponível (descontando assinaturas)
+  const nRows = mpRows.length + 1; // +1 para o header
+  // testa font sizes de maior para menor até achar o que cabe
+  let fontSize = 9, cellPad = 2.5;
+  for(let fs=9; fs>=5; fs-=0.5){
+    const estRowH = fs*0.45 + cellPad*2; // estimativa de altura por linha
+    const estTotal = estRowH * nRows;
+    if(estTotal <= availH){ fontSize=fs; break; }
+    cellPad = Math.max(1, cellPad-0.1);
+  }
 
   doc.autoTable({startY:y,
     head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],
     body:mpRows,
-    styles:{fontSize,cellPadding:cellPad,overflow:'hidden'},
-    headStyles:{fillColor:COR_MP_L,textColor:TEXT_MP,fontStyle:'bold',fontSize:fontSize},
+    styles:{fontSize,cellPadding:cellPad,overflow:'hidden',textColor:[26,29,35]},
+    headStyles:{fillColor:COR_MP_L,textColor:[26,29,35],fontStyle:'bold',fontSize:fontSize},
     columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
     margin:{left:L,right:10},
     pageBreak:'avoid'});
