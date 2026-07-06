@@ -843,9 +843,8 @@ function renderProducao() {
     }
   }
 
-  // configuração de pacotes das receitas selecionadas
-  if (selIds.length>0) {
-    // mostrar configuração apenas para personalizadas selecionadas
+  // mostrar configuração apenas para personalizadas, e apenas na aba personal
+  if (tab==='personal' && selIds.length>0) {
     const selPer=selIds.filter(id=>db.recipes.find(r=>r.id===id)?.type==='personalizada');
     if(selPer.length>0){
       html += `<div class="section-label" style="margin-top:18px"><i class="fas fa-user-tag" style="font-size:10px"></i> Dietas personalizadas selecionadas</div>`;
