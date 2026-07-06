@@ -845,69 +845,20 @@ function renderProducao() {
 
   // configuração de pacotes das receitas selecionadas
   if (selIds.length>0) {
-    html += `<div class="section-label" style="margin-top:18px"><i class="fas fa-boxes" style="font-size:10px"></i> Configure os pacotes</div>`;
-    selIds.forEach(id=>{
-      const r = db.recipes.find(x=>x.id===id); if(!r) return;
-      const s = sel[id];
-      const subtG = totalGofSel(s);
-
-      if (r.type==='comercial') {
-        html += `<div class="pkt-section">
-          <div class="pkt-name">
-            ${r.name.replace('Dieta Comercial ','')}
-            <span class="badge ${r.barf?'badge-red':catBadge(r.cat)}" style="font-size:10px">${r.barf?'BARF':r.cat}</span>
-          </div>
-          <div class="pkt-cols">
-            <div>
-              <div class="pkt-col-label">Pacotes 200g</div>
-              <div class="pkt-stepper">
-                <button onclick="adjPkt('${id}','p200',-1)">−</button>
-                <input type="number" min="0" value="${s.p200||0}" oninput="setPkt('${id}','p200',this.value)">
-                <button onclick="adjPkt('${id}','p200',1)">+</button>
-              </div>
-              <div class="pkt-sub" id="sub200-${id}">${(s.p200||0)>0?s.p200+'×200g = '+((s.p200*200)/1000).toFixed(2)+'kg':''}</div>
-            </div>
-            <div>
-              <div class="pkt-col-label">Pacotes 500g</div>
-              <div class="pkt-stepper">
-                <button onclick="adjPkt('${id}','p500',-1)">−</button>
-                <input type="number" min="0" value="${s.p500||0}" oninput="setPkt('${id}','p500',this.value)">
-                <button onclick="adjPkt('${id}','p500',1)">+</button>
-              </div>
-              <div class="pkt-sub" id="sub500-${id}">${(s.p500||0)>0?s.p500+'×500g = '+((s.p500*500)/1000).toFixed(2)+'kg':''}</div>
-            </div>
-          </div>
-          <div class="custom-box">
-            <div class="custom-box-title"><i class="fas fa-user-tag"></i> Pacote personalizado</div>
-            ${(s.customs||[]).map((c,i)=>`<div class="custom-entry" id="ce-${id}-${i}">
-              <span class="ce-name">${c.name}</span>
-              <span class="ce-detail">${c.qty}×${c.g}g</span>
-              <button onclick="editCustomInline('${id}',${i})" style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;padding:0 2px" title="Editar"><i class="fas fa-pen"></i></button>
-              <button onclick="removeCustom('${id}',${i})">×</button>
-            </div>`).join('')}
-            <div class="custom-add-form">
-              <input type="text" placeholder="Nome do cliente" id="cn-${id}" oninput="previewCustom('${id}')">
-              <div class="row2">
-                <input type="number" placeholder="g/pacote" id="cg-${id}" min="1" oninput="previewCustom('${id}')">
-                <input type="number" placeholder="qtd" id="cq-${id}" min="1" value="1" oninput="previewCustom('${id}')">
-              </div>
-              <div id="custom-preview-${id}" style="display:none;background:var(--green-light);border-radius:7px;padding:8px 10px;margin-bottom:6px;font-size:12px;color:var(--green-dark);font-weight:600"></div>
-              <button class="custom-add-btn" onclick="addCustom('${id}')"><i class="fas fa-check"></i> Confirmar e incluir</button>
-            </div>
-          </div>
-          <div class="pkt-total-bar">
-            <span style="font-size:12px;color:var(--text-2)">Total desta receita</span>
-            <span class="pkt-total-val">${subtG>0?(subtG/1000).toFixed(2)+' kg':'—'}</span>
-          </div>
-        </div>`;
-      } else {
-        const emb = embStr(r);
+    // mostrar configuração apenas para personalizadas selecionadas
+    const selPer=selIds.filter(id=>db.recipes.find(r=>r.id===id)?.type==='personalizada');
+    if(selPer.length>0){
+      html += `<div class="section-label" style="margin-top:18px"><i class="fas fa-user-tag" style="font-size:10px"></i> Dietas personalizadas selecionadas</div>`;
+      selPer.forEach(id=>{
+        const r = db.recipes.find(x=>x.id===id); if(!r) return;
+        const s = sel[id];
         const unidadesPadrao = r.defQty || 30;
         const unidadesSel = s.unidades !== undefined ? s.unidades : unidadesPadrao;
         const totalGPer = unidadesSel * (r.pktG||0);
-        const embLabel = r.pkts && r.pkts !== r.defQty
-          ? `📦 Embalagem: ${r.pkts} pacotes de ${r.pktG}g (${r.pkts/r.defQty}x ao dia)`
-          : emb ? `📦 ${emb}` : '';
+        const sp=s.splitPkts;
+        let embLabel='';
+        if(sp&&sp.total&&sp.g) embLabel=`📦 ** ${sp.total} pcts de ${sp.g}g`;
+        else if(r.pktG) embLabel=`📦 ${unidadesSel} pcts de ${r.pktG}g`;
         html += `<div class="pkt-section">
           <div class="pkt-name">${r.tutor} — ${r.dog} <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span></div>
           ${embLabel?`<div style="font-size:12px;color:var(--green-dark);margin-bottom:10px;font-weight:600">${embLabel}</div>`:''}
@@ -927,8 +878,8 @@ function renderProducao() {
             <span class="pkt-total-val">${totalGPer>0?(totalGPer/1000).toFixed(2)+' kg':'—'}</span>
           </div>
         </div>`;
-      }
-    });
+      });
+    }
   }
 
   if (totalG>0) {
