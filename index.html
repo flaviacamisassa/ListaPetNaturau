@@ -538,6 +538,101 @@ function changeDate(val) {
 }
 
 // ── PRODUÇÃO ──────────────────────────────────────────────
+// ── TABELA COMERCIAL ─────────────────────────────────────────
+const BAGS_OPTIONS=[1,2,3,4,5,6,7,8,9,10];
+
+function renderComRow(rowId, row, sorted){
+  const cells=row.cells||{};
+  return `<tr id="crow-${rowId}">
+    <td style="padding:4px;border:1px solid var(--border)">
+      <input type="text" value="${row.name||''}" placeholder="Nome"
+        oninput="updateComCell('${rowId}','name',this.value)"
+        style="width:100%;font-size:11px;border:none;background:transparent;padding:2px">
+    </td>
+    <td style="padding:4px;border:1px solid var(--border);text-align:center">
+      <select onchange="updateComCell('${rowId}','bags',this.value)"
+        style="font-size:11px;border:1px solid var(--border);border-radius:4px;padding:2px;width:100%">
+        <option value="0">—</option>
+        ${BAGS_OPTIONS.map(n=>`<option value="${n}" ${row.bags==n?'selected':''}>${n}</option>`).join('')}
+      </select>
+    </td>
+    ${sorted.map(r=>{
+      const cell=cells[r.id]||{};
+      return `<td style="padding:3px;border:1px solid var(--border);text-align:center">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <input type="number" min="0" placeholder="g" value="${cell.g||''}"
+            oninput="updateComCell('${rowId}','cell_g_${r.id}',this.value)"
+            style="width:100%;font-size:10px;text-align:center;border:1px solid var(--border);border-radius:3px;padding:2px">
+          <input type="number" min="0" placeholder="qtd" value="${cell.qty||''}"
+            oninput="updateComCell('${rowId}','cell_qty_${r.id}',this.value)"
+            style="width:100%;font-size:10px;text-align:center;border:1px solid var(--border);border-radius:3px;padding:2px">
+        </div>
+      </td>`;
+    }).join('')}
+    <td style="padding:3px;border:1px solid var(--border);text-align:center">
+      <button onclick="removeComRow('${rowId}')"
+        style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:2px">
+        <i class="fas fa-times"></i>
+      </button>
+    </td>
+  </tr>`;
+}
+
+function addComRow(){
+  if(!state.comTable) state.comTable={};
+  const rowId='cr'+Date.now();
+  state.comTable[rowId]={name:'',bags:0,cells:{}};
+  renderProducao();
+}
+
+function removeComRow(rowId){
+  if(!state.comTable) return;
+  delete state.comTable[rowId];
+  syncComTableToSelected();
+  renderProducao();
+}
+
+function updateComCell(rowId, field, value){
+  if(!state.comTable) state.comTable={};
+  if(!state.comTable[rowId]) state.comTable[rowId]={name:'',bags:0,cells:{}};
+  const row=state.comTable[rowId];
+  if(field==='name') row.name=value;
+  else if(field==='bags') row.bags=parseInt(value)||0;
+  else if(field.startsWith('cell_g_')){ const rid=field.replace('cell_g_',''); if(!row.cells[rid]) row.cells[rid]={}; row.cells[rid].g=parseInt(value)||0; }
+  else if(field.startsWith('cell_qty_')){ const rid=field.replace('cell_qty_',''); if(!row.cells[rid]) row.cells[rid]={}; row.cells[rid].qty=parseInt(value)||0; }
+  syncComTableToSelected();
+}
+
+function syncComTableToSelected(sorted){
+  if(!state.comTable) return;
+  const db=state.db||{};
+  const comerciais=db.recipes?.filter(r=>r.type==='comercial'&&!r.barf)||[];
+  if(!sorted){
+    const ORDER=['Frango','Boi','Porco','Peru','Pato','Burger Boi','Burger Frango'];
+    sorted=ORDER.map(cat=>comerciais.filter(r=>r.name.toLowerCase().includes(cat.toLowerCase()))[0]).filter(Boolean);
+    comerciais.forEach(r=>{ if(!sorted.includes(r)) sorted.push(r); });
+  }
+  sorted.forEach(r=>{
+    const customs=[];
+    Object.values(state.comTable).forEach(row=>{
+      const cell=row.cells?.[r.id];
+      if(cell&&cell.g>0&&cell.qty>0&&row.name){
+        customs.push({name:row.name+(row.bags>0?` (${row.bags} sacola${row.bags!==1?'s':''})`:'')+` — ${cell.qty}×${cell.g}g`, g:cell.g, qty:cell.qty});
+      }
+    });
+    const totalG=customs.reduce((a,c)=>a+c.g*c.qty,0);
+    if(totalG>0){
+      if(!state.today.selected[r.id]) state.today.selected[r.id]={};
+      state.today.selected[r.id].recipe=r;
+      state.today.selected[r.id].p200=0;
+      state.today.selected[r.id].p500=0;
+      state.today.selected[r.id].customs=customs;
+    } else {
+      delete state.today.selected[r.id];
+    }
+  });
+}
+
 function renderProducao() {
   const db = state.db;
   const sel = state.today.selected;
@@ -561,17 +656,68 @@ function renderProducao() {
   // grade de receitas
   if (tab==='cozida') {
     const coz = comerciais.filter(r=>!r.barf);
-    if(!coz.length) html+=`<div class="empty"><i class="fas fa-utensils"></i><p>Nenhuma receita cozida cadastrada</p></div>`;
-    else html += `<div class="recipe-grid">` + coz.map(r=>{
-      const isSel = !!sel[r.id];
-      const shortName = r.name.replace('Dieta Comercial ','');
-      return `<div class="recipe-card ${isSel?'selected':''}" onclick="toggleRecipe('${r.id}')">
-        <div class="rc-check"><i class="fas fa-check"></i></div>
-        <div class="rc-name">${shortName}</div>
-        <div class="rc-sub">${r.subname}</div>
-        <span class="badge ${catBadge(r.cat)}" style="font-size:10px">${r.cat}</span>
-      </div>`;
-    }).join('')+`</div>`;
+    if(!coz.length){
+      html+=`<div class="empty"><i class="fas fa-utensils"></i><p>Nenhuma receita cozida cadastrada</p></div>`;
+    } else {
+      // ordem fixa das colunas de receitas comerciais
+      const ORDER=['Frango','Boi','Porco','Peru','Pato','Burger Boi','Burger Frango'];
+      const sorted=ORDER.map(cat=>coz.filter(r=>r.name.toLowerCase().includes(cat.toLowerCase()))[0]).filter(Boolean);
+      // adicionar quaisquer receitas não contempladas na ordem
+      coz.forEach(r=>{ if(!sorted.includes(r)) sorted.push(r); });
+
+      if(!state.comTable) state.comTable={}; // {rowId: {name, bags, cells:{recipeId:{g,qty}}}}
+
+      // cabeçalho da tabela
+      const colW=`${Math.floor(100/(sorted.length+2))}%`;
+      let tbl=`<div style="overflow-x:auto;margin-bottom:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead>
+            <tr style="background:var(--green-light)">
+              <th style="padding:6px 4px;text-align:left;border:1px solid var(--border);min-width:90px">Cliente</th>
+              <th style="padding:6px 4px;text-align:center;border:1px solid var(--border);min-width:50px">Sacolas</th>
+              ${sorted.map(r=>`<th style="padding:6px 4px;text-align:center;border:1px solid var(--border);min-width:70px;color:var(--green-dark)">${r.name.replace('Dieta Comercial ','')}</th>`).join('')}
+              <th style="padding:4px;border:1px solid var(--border);width:64px"></th>
+            </tr>
+          </thead>
+          <tbody id="com-table-body">`;
+
+      const rows=Object.entries(state.comTable);
+      if(rows.length===0){
+        tbl+=`<tr id="empty-row"><td colspan="${sorted.length+3}" style="text-align:center;padding:14px;color:var(--text-3);font-style:italic">Clique em "+ Adicionar cliente" para começar</td></tr>`;
+      } else {
+        rows.forEach(([rowId, row])=>{
+          tbl+=renderComRow(rowId, row, sorted);
+        });
+      }
+      tbl+=`</tbody></table></div>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="addComRow()">
+          <i class="fas fa-plus"></i> Adicionar cliente
+        </button>`;
+
+      // totais por receita
+      const totals=sorted.map(r=>{
+        let total=0;
+        Object.values(state.comTable).forEach(row=>{
+          const cell=row.cells?.[r.id];
+          if(cell&&cell.g&&cell.qty) total+=cell.g*cell.qty;
+        });
+        return {r, total};
+      }).filter(x=>x.total>0);
+
+      if(totals.length){
+        tbl+=`<div style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:11px">
+          <div style="font-weight:700;color:var(--green-dark);margin-bottom:4px">📦 Resumo por receita:</div>
+          ${totals.map(({r,total})=>`<div style="display:flex;justify-content:space-between;padding:2px 0">
+            <span>${r.name.replace('Dieta Comercial ','')}</span>
+            <span style="font-weight:700">${(total/1000).toFixed(2)} kg</span>
+          </div>`).join('')}
+        </div>`;
+      }
+
+      // sincronizar com state.today.selected
+      syncComTableToSelected(sorted);
+      html+=tbl;
+    }
   } else if (tab==='barf') {
     const barf = comerciais.filter(r=>r.barf);
     if (!barf.length) html += `<div class="empty"><i class="fas fa-leaf"></i><p>Nenhuma receita BARF cadastrada</p></div>`;
@@ -1635,7 +1781,6 @@ function gerarRelatorio(){
       const unidades=s.unidades!==undefined?s.unidades:(r.defQty||30);
       const tg=unidades*(r.pktG||0);
       const sp=s.splitPkts;
-      // embalagem: se divisão ativa → mostrar split; senão → unidades × pktG
       let embLabel, embStyle={};
       if(sp&&sp.total&&sp.g){
         embLabel=`** ${sp.total} pcts de ${sp.g}g`;
@@ -1645,17 +1790,19 @@ function gerarRelatorio(){
       } else {
         embLabel='—';
       }
+      const sacolas=r.bags&&r.bags>0?`${r.bags} sacola${r.bags!==1?'s':''}` :'—';
       return [
         `${r.tutor} — ${r.dog}`,
         r.cat,
         `${unidades} unid`,
         {content:embLabel, styles:embStyle},
+        sacolas,
         tg>0?(tg/1000).toFixed(2)+' kg':'—'
       ];
     });
-    doc.autoTable({startY:y,head:[['Tutor / Pet','Sabor','Unidades','Embalagem','MP Total']],body:pedRowsPer,
+    doc.autoTable({startY:y,head:[['Tutor / Pet','Sabor','Unidades','Embalagem','Sacolas','MP Total']],body:pedRowsPer,
       styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:COR_PEDIDOS_L,textColor:TEXT_PEDIDOS,fontStyle:'bold',fontSize:8},
-      columnStyles:{0:{cellWidth:55},1:{cellWidth:20},2:{cellWidth:20},3:{cellWidth:55},4:{cellWidth:30,halign:'right',fontStyle:'bold'}},
+      columnStyles:{0:{cellWidth:50},1:{cellWidth:18},2:{cellWidth:18},3:{cellWidth:50},4:{cellWidth:20},5:{cellWidth:30,halign:'right',fontStyle:'bold'}},
       margin:{left:L,right:10}});
     y=doc.lastAutoTable.finalY+5;
   }
@@ -2235,6 +2382,12 @@ function editRecipe(id){
         <div class="row2">
           <div class="field"><label>Nº pacotes/mês</label><input type="number" id="er-pkts" value="${r.pkts||r.defQty||30}"></div>
           <div class="field"><label>Peso/pacote (g)</label><input type="number" id="er-pktg" step="0.1" value="${r.pktG||''}"></div>
+        </div>
+        <div class="field"><label>Nº de sacolas para entrega</label>
+          <select id="er-bags" style="background:white">
+            <option value="0">— não definido —</option>
+            ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${(r.bags||0)==n?'selected':''}>${n} sacola${n!==1?'s':''}</option>`).join('')}
+          </select>
         </div>`}
     <div class="row2">
       <div class="field"><label>Categoria</label>
@@ -2302,6 +2455,7 @@ function saveEditRecipe(id,type){
     r.tutor=tutor; r.dog=dog; r.cat=cat; r.temp=temp; r.ingredients=ingredients;
     r.pkts=parseInt(document.getElementById('er-pkts')?.value)||r.pkts||null;
     r.pktG=parseFloat(document.getElementById('er-pktg')?.value)||r.pktG||null;
+    r.bags=parseInt(document.getElementById('er-bags')?.value)||0;
     r.defQty=r.pkts||30;
   }
   saveData(); closeModal(); renderReceitas();
