@@ -1749,27 +1749,28 @@ function gerarRelatorio(){
   };
 
   // helper: quadrado de receita (para grade de personalizadas)
-  const drawRecipeBox=(x, y, bw, bh, r, mult, label)=>{
+  const drawRecipeBox=(x, y, bw, bh, r, mult, label, isCru=false)=>{
     // bh é FIXO — nunca crescer além dele
     const totalKgBox=r.ingredients.reduce((a,i)=>a+i.q*mult,0)/1000;
     const boxDividir=totalKgBox>32;
     const headerH=7;
     const warnH=boxDividir?8:0;
+    const cruH=isCru?8:0;
     const footerH=5;
     const obsH=r.obs?8:0;
-    const innerH=bh-headerH-warnH-footerH-obsH-2; // espaço para ingredientes
+    const innerH=bh-headerH-warnH-cruH-footerH-obsH-2; // espaço para ingredientes
     const nIngs=r.ingredients.length;
     const lineH=Math.min(9, Math.max(3.5, innerH/Math.max(nIngs,1)));
     const fontSize=Math.min(6.5, Math.max(4, lineH*0.72));
 
-    // borda externa — tamanho exato do bh
-    doc.setDrawColor(181,205,90); doc.setLineWidth(0.4);
+    // borda externa — vermelho para cruas, verde para cozidas
+    doc.setDrawColor(...(isCru?COR_MP:COR_PERSONAL)); doc.setLineWidth(isCru?1:0.4);
     doc.rect(x, y, bw, bh, 'S');
 
-    // Header verde
-    doc.setFillColor(181,205,90);
+    // Header — vermelho para cruas, verde para cozidas
+    doc.setFillColor(...(isCru?COR_MP:COR_PERSONAL));
     doc.rect(x, y, bw, headerH, 'F');
-    doc.setTextColor(26,29,35);
+    doc.setTextColor(...BRANCO);
     doc.setFontSize(7.5); doc.setFont('helvetica','bold');
     const dogLabel=`${r.dog} — ${r.cat}`;
     doc.text(dogLabel.length>28?dogLabel.substring(0,27)+'…':dogLabel, x+2, y+4.7);
@@ -1777,14 +1778,24 @@ function gerarRelatorio(){
     doc.text(label, x+bw-2, y+4.7, {align:'right'});
     doc.setTextColor(26,29,35);
 
-    // Aviso 32kg (imediatamente abaixo do header)
-    if(boxDividir){
-      doc.setFillColor(210,234,248);
-      doc.rect(x, y+headerH, bw, warnH, 'F');
-      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
-      doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x  (${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+5.2, {align:'center'});
+    // Aviso RECEITA CRUA (imediatamente abaixo do header)
+    if(isCru){
+      doc.setFillColor(220,53,53);
+      doc.rect(x, y+headerH, bw, cruH, 'F');
+      doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
+      doc.text('🥩 ATENÇÃO — RECEITA CRUA', x+bw/2, y+headerH+5.2, {align:'center'});
       doc.setTextColor(26,29,35);
     }
+
+    // Aviso 32kg (abaixo do aviso cru se houver)
+    if(boxDividir){
+      doc.setFillColor(210,234,248);
+      doc.rect(x, y+headerH+cruH, bw, warnH, 'F');
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
+      doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x  (${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+cruH+5.2, {align:'center'});
+      doc.setTextColor(26,29,35);
+    }
+
 
     // Ingredientes ordenados — NUNCA ultrapassar a área interna
     const catOrder={proteina:0,vegetal:1,suplemento:2,cru:0};
@@ -1795,7 +1806,7 @@ function gerarRelatorio(){
       return normalizeName(a.n).localeCompare(normalizeName(b.n),'pt');
     });
 
-    const ingAreaTop=y+headerH+warnH+1;
+    const ingAreaTop=y+headerH+warnH+cruH+1;
     const ingAreaBot=y+bh-footerH-obsH-1;
     let iy=ingAreaTop+fontSize;
 
@@ -1975,67 +1986,82 @@ function gerarRelatorio(){
 
   // ══════════════════════════════════════
   // PÁGINAS DE PERSONALIZADAS — por tutor, grade 2×2
+  // separar: cozidas (sem ingredientes crus) e cruas (com qualquer ingrediente cru)
   // ══════════════════════════════════════
-  if(selPer.length){
-    // agrupar por tutor mantendo ordem
+  const hasRawIng = s => s.recipe.ingredients.some(i=>i.raw);
+  const selPerCoz = selPer.filter(s=>!hasRawIng(s));
+  const selPerCru = selPer.filter(s=>hasRawIng(s));
+
+  // ── helper: renderizar grade de um grupo de receitas ──────
+  const renderGrade=(grupo, tituloCor, tituloTexto, isCru=false)=>{
+    for(let gi=0;gi<grupo.length;gi+=4){
+      const bloco=grupo.slice(gi,gi+4);
+      doc.addPage();
+      pageHeader();
+
+      const TITULO_Y=27, TITULO_H=7;
+      doc.setFillColor(...tituloCor);
+      doc.rect(L, TITULO_Y, W, TITULO_H, 'F');
+      doc.setTextColor(...BRANCO);
+      doc.setFontSize(9); doc.setFont('helvetica','bold');
+      const parteStr=grupo.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(grupo.length/4)}`:'';
+      doc.text(`${tituloTexto}${parteStr}`, L+2, TITULO_Y+4.8);
+      doc.setTextColor(26,29,35);
+
+      const SIG_Y=PH-14;
+      doc.setFontSize(6); doc.setFont('helvetica','normal');
+      doc.text(`Data fabricação: ${dateFab}`, L, SIG_Y);
+      doc.line(L, SIG_Y+5.5, L+72, SIG_Y+5.5);
+      doc.text('Responsável', L, SIG_Y+8.5);
+      doc.line(120, SIG_Y+5.5, R, SIG_Y+5.5);
+      doc.text('Validação técnica', 120, SIG_Y+8.5);
+
+      const GRADE_TOP=TITULO_Y+TITULO_H+2;
+      const GRADE_BOT=SIG_Y-3;
+      const GRADE_H=GRADE_BOT-GRADE_TOP;
+      const COLS=2, GAP=3;
+      const N_ROWS=Math.ceil(bloco.length/COLS);
+      const BH=Math.floor((GRADE_H-GAP*(N_ROWS-1))/N_ROWS);
+      const BW=(W-4)/COLS;
+
+      bloco.forEach((s,i)=>{
+        const r=s.recipe;
+        const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
+        const sp=s.splitPkts;
+        const emb=sp&&sp.total&&sp.g?`** ${sp.total} pcts de ${sp.g}g`
+          :(r.pktG?`${mult} unid×${r.pktG}g`:`${mult} unid`);
+        const col=i%COLS, row=Math.floor(i/COLS);
+        drawRecipeBox(L+col*(BW+4), GRADE_TOP+row*(BH+GAP), BW, BH, r, mult, emb, isCru);
+      });
+    }
+  };
+
+  if(selPerCoz.length){
+    // agrupar por tutor
     const tutorMap={};
-    selPer.forEach(s=>{
+    selPerCoz.forEach(s=>{
       const t=s.recipe.tutor;
       if(!tutorMap[t]) tutorMap[t]=[];
       tutorMap[t].push(s);
     });
-
     Object.entries(tutorMap).forEach(([tutor,items])=>{
-      for(let gi=0;gi<items.length;gi+=4){
-        const grupo=items.slice(gi,gi+4);
-        doc.addPage();
-        pageHeader(); // ocupa 0-24mm
+      renderGrade(items, COR_PERSONAL, tutor.toUpperCase(), false);
+    });
+  }
 
-        // ── TÍTULO DO TUTOR (27-34mm) ──────────────────────────
-        const TITULO_Y=27, TITULO_H=7;
-        doc.setFillColor(...COR_PERSONAL);
-        doc.rect(L, TITULO_Y, W, TITULO_H, 'F');
-        doc.setTextColor(...BRANCO);
-        doc.setFontSize(9); doc.setFont('helvetica','bold');
-        const parteStr=items.length>4?` — Parte ${Math.floor(gi/4)+1}/${Math.ceil(items.length/4)}`:'';
-        doc.text(`${tutor.toUpperCase()}${parteStr}`, L+2, TITULO_Y+4.8);
-        doc.setTextColor(26,29,35);
-
-        // ── ASSINATURAS — RODAPÉ FIXO (nunca se move) ──────────
-        const SIG_Y=PH-14; // 283mm — abaixo de tudo
-        doc.setFontSize(6); doc.setFont('helvetica','normal');
-        doc.text(`Data fabricação: ${dateFab}`, L, SIG_Y);
-        doc.line(L,    SIG_Y+5.5, L+72,  SIG_Y+5.5);
-        doc.text('Responsável', L, SIG_Y+8.5);
-        doc.line(120,  SIG_Y+5.5, R,     SIG_Y+5.5);
-        doc.text('Validação técnica', 120, SIG_Y+8.5);
-
-        // ── GRADE 2×2 — BH CALCULADO DO ESPAÇO DISPONÍVEL ─────
-        const GRADE_TOP = TITULO_Y + TITULO_H + 2; // 36mm
-        const GRADE_BOT = SIG_Y - 3;               // 280mm
-        const GRADE_H   = GRADE_BOT - GRADE_TOP;   // 244mm disponíveis
-
-        const COLS=2;
-        const BW=(W-4)/COLS;
-        const GAP=3;
-        const N_ROWS=Math.ceil(grupo.length/COLS); // 1 ou 2
-        // BH = espaço total ÷ número de rows, descontando gaps
-        const BH=Math.floor((GRADE_H - GAP*(N_ROWS-1)) / N_ROWS);
-
-        grupo.forEach((s,i)=>{
-          const r=s.recipe;
-          const mult=s.unidades!==undefined?s.unidades:(r.defQty||30);
-          const sp=s.splitPkts;
-          const emb = sp&&sp.total&&sp.g
-            ? `** ${sp.total} pcts de ${sp.g}g`
-            : (r.pktG ? `${mult} unid×${r.pktG}g` : `${mult} unid`);
-          const col  = i % COLS;
-          const row  = Math.floor(i / COLS);
-          const bx   = L + col*(BW+4);
-          const by   = GRADE_TOP + row*(BH+GAP);
-          drawRecipeBox(bx, by, BW, BH, r, mult, emb);
-        });
-      }
+  // ══════════════════════════════════════
+  // SEÇÃO DE ALIMENTOS CRUS — após personalizadas, antes do MP
+  // ══════════════════════════════════════
+  if(selPerCru.length){
+    // agrupar por tutor também
+    const tutorMapCru={};
+    selPerCru.forEach(s=>{
+      const t=s.recipe.tutor;
+      if(!tutorMapCru[t]) tutorMapCru[t]=[];
+      tutorMapCru[t].push(s);
+    });
+    Object.entries(tutorMapCru).forEach(([tutor,items])=>{
+      renderGrade(items, COR_MP, `🥩 ALIMENTOS CRUS — ${tutor.toUpperCase()}`, true);
     });
   }
 
