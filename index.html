@@ -537,6 +537,64 @@ function changeDate(val) {
   renderProducao();
 }
 
+function histForDate(date){
+  return (state.db.history||[]).find(h=>h.date===date)||null;
+}
+
+function mudarDataProducao(){
+  // abre o date picker nativo
+  const inp=document.getElementById('date-inp');
+  if(inp){ inp.showPicker?.(); inp.click(); }
+}
+
+function verHistoricoData(histId){
+  navigate('historico');
+  setTimeout(()=>viewHistDetail(histId),200);
+}
+
+function verificarConflito(){
+  const hist=histForDate(state.today.date);
+  if(!hist){
+    gerarRelatorio();
+    return;
+  }
+  // há conflito — mostrar modal de escolha
+  openModal(`<div class="modal-title" style="color:#E65100"><i class="fas fa-exclamation-triangle"></i> Atenção!</div>
+    <div style="background:#FFF8E1;border:1px solid #F9A825;border-radius:8px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#E65100;margin-bottom:4px">Já existe produção para ${fmtDate(state.today.date)}</div>
+      <div style="font-size:12px;color:#795548">${(hist.recipes||[]).slice(0,3).join(' · ')}${(hist.recipes||[]).length>3?` +${hist.recipes.length-3} mais`:''}</div>
+      <div style="font-size:12px;color:#795548;margin-top:2px">Total registrado: <strong>${hist.totalKg} kg</strong></div>
+    </div>
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">O que deseja fazer?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary btn-full" onclick="closeModal();mesclarProducao()">
+        <i class="fas fa-layer-group"></i> Mesclar com produção existente
+        <div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px">Adiciona as receitas atuais à produção já salva</div>
+      </button>
+      <button class="btn btn-full" style="border-color:#E65100;color:#E65100" onclick="closeModal();gerarRelatorio()">
+        <i class="fas fa-exclamation-circle"></i> Substituir produção existente
+        <div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px">⚠️ Apaga o registro anterior desse dia</div>
+      </button>
+      <button class="btn btn-full" onclick="closeModal();mudarDataProducao()">
+        <i class="fas fa-calendar-alt"></i> Cancelar e mudar a data
+      </button>
+    </div>`);
+}
+
+function mesclarProducao(){
+  const hist=histForDate(state.today.date);
+  if(!hist){ gerarRelatorio(); return; }
+  // mescla seleção atual com histórico salvo
+  const selAtual=JSON.parse(JSON.stringify(state.today.selected));
+  const selHistorico=hist.selected||{};
+  // unir: itens do histórico + novos (novos têm prioridade se houver conflito de id)
+  const selMesclado={...selHistorico, ...selAtual};
+  // remove o histórico do dia para o gerarRelatorio salvar a versão mesclada
+  state.db.history=state.db.history.filter(h=>h.date!==state.today.date);
+  state.today.selected=selMesclado;
+  gerarRelatorio();
+}
+
 // ── PRODUÇÃO ──────────────────────────────────────────────
 // ── TABELA COMERCIAL ─────────────────────────────────────────
 const BAGS_OPTIONS=[1,2,3,4,5,6,7,8,9,10];
@@ -668,6 +726,27 @@ function renderProducao() {
   const tutors = [...new Set(personalizadas.map(r=>r.tutor))];
 
   let html = renderDateBar();
+
+  // ── AVISO: produção já existe para essa data ──
+  const histExist=histForDate(state.today.date);
+  if(histExist){
+    html+=`<div style="background:#FFF8E1;border:1.5px solid #F9A825;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px">
+      <i class="fas fa-exclamation-triangle" style="color:#F57F17;font-size:18px;margin-top:2px;flex-shrink:0"></i>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#E65100;margin-bottom:3px">⚠️ Já existe produção registrada para ${fmtDateShort(state.today.date)}!</div>
+        <div style="font-size:11px;color:#795548;line-height:1.5">${(histExist.recipes||[]).slice(0,4).join(' · ')}${(histExist.recipes||[]).length>4?` +${histExist.recipes.length-4} mais`:''}</div>
+        <div style="font-size:11px;color:#795548;margin-top:2px">Total registrado: <strong>${histExist.totalKg} kg</strong></div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm" style="font-size:11px;background:#E65100;color:white;border-color:#E65100" onclick="mudarDataProducao()">
+            <i class="fas fa-calendar-alt"></i> Mudar data
+          </button>
+          <button class="btn btn-sm" style="font-size:11px" onclick="verHistoricoData('${histExist.id}')">
+            <i class="fas fa-eye"></i> Ver produção salva
+          </button>
+        </div>
+      </div>
+    </div>`; 
+  }
 
   // tabs
   html += `<div class="tabs">
@@ -987,7 +1066,7 @@ function abrirCarrinho(){
     </div>
     <div style="font-size:22px;font-weight:700;color:var(--green-dark);font-family:'DM Mono',monospace">${(totalG/1000).toFixed(2)} kg</div>
   </div>
-  <button class="gen-btn" style="border-radius:10px;width:100%" onclick="closeModal();gerarRelatorio()">
+  <button class="gen-btn" style="border-radius:10px;width:100%" onclick="closeModal();verificarConflito()">
     <i class="fas fa-file-pdf"></i> Confirmar e Gerar PDF
   </button>`;
 
