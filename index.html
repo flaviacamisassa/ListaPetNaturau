@@ -2806,6 +2806,7 @@ function renderPetiscos(){
       return `<div class="pkt-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="pkt-name" style="margin:0">${item}</div>
+          <button class="btn btn-icon btn-sm" style="border-color:var(--amber);color:var(--amber)" onclick="editPetiscoItem('${tab}',${idx})"><i class="fas fa-pen"></i></button>
           <button class="btn btn-icon btn-sm btn-danger" onclick="deletePetiscoItem('${tab}',${idx})"><i class="fas fa-trash-alt"></i></button>
         </div>
         <div class="row2">
@@ -2878,6 +2879,33 @@ function addPetiscoItem(tab){
   state.db.petiscosItems[tab].push(name);
   saveData(); renderPetiscos();
   toast(`✅ "${name}" adicionado!`);
+}
+
+function editPetiscoItem(tab, idx){
+  const item=state.db.petiscosItems[tab][idx];
+  const tabLabel=PETISCO_TABS.find(t=>t.key===tab)?.label||tab;
+  openModal(`<div class="modal-title">Editar item — ${tabLabel} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div class="field">
+      <label>Nome do item</label>
+      <input type="text" id="edit-petisco-name" value="${item}" style="font-size:14px">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveEditPetiscoItem('${tab}',${idx})">
+      <i class="fas fa-save"></i> Salvar
+    </button>`);
+  setTimeout(()=>document.getElementById('edit-petisco-name')?.focus(),100);
+}
+
+function saveEditPetiscoItem(tab, idx){
+  const newName=document.getElementById('edit-petisco-name')?.value.trim();
+  if(!newName){toast('⚠️ Informe o nome do item');return;}
+  const oldName=state.db.petiscosItems[tab][idx];
+  state.db.petiscosItems[tab][idx]=newName;
+  // atualizar também o histórico de produções que usava o nome antigo
+  (state.db.petiscosHistory||[]).forEach(p=>{
+    if(p.item===oldName&&p.category===tab) p.item=newName;
+  });
+  saveData(); closeModal(); renderPetiscos();
+  toast(`✅ "${newName}" atualizado!`);
 }
 
 function deletePetiscoItem(tab, idx){
@@ -2978,14 +3006,20 @@ function gerarRelatorioPeriodo(){
   doc.setFontSize(9);
   doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, R, 17, {align:'right'});
 
-  // monta tabela
+  // monta tabela principal
   const head=['Data','Receitas (kg)',...itemCols.map(c=>c+' (kg)'),'TOTAL (kg)'];
   const body=dates.map(date=>{
     const row=dateMap[date];
     const receitasKg=row['__receitas']||0;
     const cols=itemCols.map(c=>row[c]?row[c].toFixed(2):'—');
     const totalDia=receitasKg+itemCols.reduce((a,c)=>a+(row[c]||0),0);
-    return [fmtDateShort(date), receitasKg>0?receitasKg.toFixed(2):'—', ...cols, totalDia.toFixed(2)];
+    // coluna de receitas em laranja
+    return [
+      fmtDateShort(date),
+      {content:receitasKg>0?receitasKg.toFixed(2):'—', styles:{fillColor:[253,224,197],fontStyle:'bold'}},
+      ...cols,
+      totalDia.toFixed(2)
+    ];
   });
 
   // linha de totais
@@ -2993,27 +3027,70 @@ function gerarRelatorioPeriodo(){
   const totalPorItem=itemCols.map(c=>dates.reduce((a,d)=>a+(dateMap[d][c]||0),0));
   const totalGeral=totalReceitas+totalPorItem.reduce((a,v)=>a+v,0);
   body.push([
-    {content:'TOTAL DO PERÍODO',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
-    {content:totalReceitas.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}},
-    ...totalPorItem.map(v=>({content:v.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[143,163,66]}})),
+    {content:'TOTAL DO PERÍODO',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}},
+    {content:totalReceitas.toFixed(2),styles:{fontStyle:'bold',fillColor:[253,224,197],textColor:[26,29,35]}},
+    ...totalPorItem.map(v=>({content:v.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}})),
     {content:totalGeral.toFixed(2),styles:{fontStyle:'bold',fillColor:[181,205,90],textColor:[26,29,35]}}
   ]);
 
   doc.autoTable({
     startY:y, head:[head], body,
-    styles:{fontSize:8,cellPadding:2.5,halign:'center'},
-    headStyles:{fillColor:COR_PERSONAL_L,textColor:TEXT_PERSONAL,fontStyle:'bold',fontSize:8},
-    columnStyles:{0:{halign:'left',fontStyle:'bold',cellWidth:25}},
+    styles:{fontSize:8,cellPadding:2.5,halign:'center',textColor:[26,29,35]},
+    headStyles:{fillColor:COR_PERSONAL_L,textColor:[26,29,35],fontStyle:'bold',fontSize:8},
+    columnStyles:{
+      0:{halign:'left',fontStyle:'bold',cellWidth:25},
+      1:{fillColor:[253,237,220]} // laranja claro na coluna receitas
+    },
     margin:{left:L,right:10},
     didDrawPage:(data)=>{
-      // rodapé com número de página
       doc.setFontSize(7); doc.setTextColor(150,150,150);
       doc.text(`Página ${doc.internal.getNumberOfPages()}`, PW-15, PH-6);
       doc.setTextColor(26,29,35);
     }
   });
 
-  y=doc.lastAutoTable.finalY+10;
+  y=doc.lastAutoTable.finalY+8;
+
+  // ── TABELA DE TOTAIS POR CATEGORIA ──────────────────────────
+  const PETISCO_CATS=[
+    {key:'petiscos',    label:'Petiscos'},
+    {key:'caldos',      label:'Caldos'},
+    {key:'saborizantes',label:'Saborizantes'},
+    {key:'nutrally',    label:'Nutrally'},
+  ];
+
+  // calcular total por categoria somando os itens de cada categoria
+  const catTotals=PETISCO_CATS.map(cat=>{
+    const items=state.db.petiscosItems?.[cat.key]||[];
+    const total=petHistory.filter(p=>p.category===cat.key).reduce((a,p)=>a+(p.kg||0),0);
+    return {label:cat.label, total};
+  }).filter(c=>c.total>0);
+
+  if(catTotals.length>0){
+    const totalPetiscos=catTotals.reduce((a,c)=>a+c.total,0);
+    const catRows=[
+      ...catTotals.map(c=>[c.label, c.total.toFixed(2)+' kg']),
+      [{content:'TOTAL PETISCOS & MASTIGÁVEIS',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}},
+       {content:totalPetiscos.toFixed(2)+' kg',styles:{fontStyle:'bold',fillColor:[181,205,90],textColor:[26,29,35]}}]
+    ];
+
+    // nova página se não couber
+    if(y+catRows.length*10+20>PH){doc.addPage(); y=15;}
+
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
+    doc.text('TOTAIS POR CATEGORIA — PETISCOS & MASTIGÁVEIS', L, y); y+=4;
+
+    doc.autoTable({
+      startY:y,
+      head:[['Categoria','Total no período']],
+      body:catRows,
+      styles:{fontSize:9,cellPadding:3,halign:'center',textColor:[26,29,35]},
+      headStyles:{fillColor:COR_PERSONAL_L,textColor:[26,29,35],fontStyle:'bold',fontSize:9},
+      columnStyles:{0:{halign:'left',cellWidth:80},1:{cellWidth:50,fontStyle:'bold'}},
+      margin:{left:L,right:10}
+    });
+    y=doc.lastAutoTable.finalY+8;
+  }
 
   // assinatura final
   if(y<PH-20){
