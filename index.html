@@ -1783,7 +1783,7 @@ function gerarRelatorio(){
       doc.setFillColor(220,53,53);
       doc.rect(x, y+headerH, bw, cruH, 'F');
       doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
-      doc.text('🥩 ATENÇÃO — RECEITA CRUA', x+bw/2, y+headerH+5.2, {align:'center'});
+      doc.text('ATENCAO — RECEITA CRUA', x+bw/2, y+headerH+5.2, {align:'center'});
       doc.setTextColor(26,29,35);
     }
 
@@ -1792,7 +1792,7 @@ function gerarRelatorio(){
       doc.setFillColor(210,234,248);
       doc.rect(x, y+headerH+cruH, bw, warnH, 'F');
       doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
-      doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x  (${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+cruH+5.2, {align:'center'});
+      doc.text(`! RECEITA DIVIDIDA — FAZER 2x  (${totalKgBox.toFixed(1)}kg)`, x+bw/2, y+headerH+cruH+5.2, {align:'center'});
       doc.setTextColor(26,29,35);
     }
 
@@ -1959,7 +1959,7 @@ function gerarRelatorio(){
           doc.rect(L,y,W,9,'F');
           doc.setDrawColor(52,152,219); doc.setLineWidth(0.5); doc.rect(L,y,W,9,'S');
           doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
-          doc.text(`⚠ RECEITA DIVIDIDA — FAZER 2x (TOTAL: ${totalKgRecipe.toFixed(2)}kg)`, PW/2, y+6, {align:'center'});
+          doc.text(`! RECEITA DIVIDIDA — FAZER 2x (TOTAL: ${totalKgRecipe.toFixed(2)}kg)`, PW/2, y+6, {align:'center'});
           doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
           y+=11;
         }
@@ -1975,7 +1975,7 @@ function gerarRelatorio(){
           doc.setFillColor(255,253,231); doc.rect(L,y,W,8,'F');
           doc.setDrawColor(249,168,37); doc.setLineWidth(0.3); doc.rect(L,y,W,8,'S');
           doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
-          doc.text(`⚠ OBS: ${r.obs}`, L+2, y+5.2);
+          doc.text(`OBS: ${r.obs}`, L+2, y+5.2);
           doc.setTextColor(26,29,35); doc.setLineWidth(0.5);
           y+=9;
         }
@@ -2061,7 +2061,7 @@ function gerarRelatorio(){
       tutorMapCru[t].push(s);
     });
     Object.entries(tutorMapCru).forEach(([tutor,items])=>{
-      renderGrade(items, COR_MP, `🥩 ALIMENTOS CRUS — ${tutor.toUpperCase()}`, true);
+      renderGrade(items, COR_MP, `ALIMENTOS CRUS — ${tutor.toUpperCase()}`, true);
     });
   }
 
@@ -2072,10 +2072,10 @@ function gerarRelatorio(){
   y=secTitle(y,'TOTAL DE MATÉRIA-PRIMA — RASTREABILIDADE',L,W,COR_MP,BRANCO);
 
   const CAT_CONFIG={
-    cru:      {label:'🥩 ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:[253,237,236]},
-    proteina: {label:'🥩 PROTEÍNAS (carnes, vísceras, ovos, laticínios)',               fill:[254,235,200]},
-    vegetal:  {label:'🥿 VEGETAIS E LEGUMES',                                            fill:[232,245,233]},
-    suplemento:{label:'💊 COMPLEMENTOS E SUPLEMENTOS',                                   fill:[232,240,254]},
+    cru:      {label:'ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:[253,237,236]},
+    proteina: {label:'PROTEINAS (carnes, visceras, ovos, laticinios)',               fill:[254,235,200]},
+    vegetal:  {label:'VEGETAIS E LEGUMES',                                            fill:[232,245,233]},
+    suplemento:{label:'COMPLEMENTOS E SUPLEMENTOS',                                   fill:[232,240,254]},
   };
 
   const mpRows=[];
@@ -2098,17 +2098,26 @@ function gerarRelatorio(){
     {content:'',colSpan:3,styles:{fillColor:COR_MP_L}}
   ]);
 
-  // ── FONT SIZE DINÂMICO: maximizar para caber tudo em 1 página ──
-  const availH = PH - y - 30; // espaço disponível (descontando assinaturas)
-  const nRows = mpRows.length + 1; // +1 para o header
-  // testa font sizes de maior para menor até achar o que cabe
-  let fontSize = 9, cellPad = 2.5;
-  for(let fs=9; fs>=5; fs-=0.5){
-    const estRowH = fs*0.45 + cellPad*2; // estimativa de altura por linha
-    const estTotal = estRowH * nRows;
-    if(estTotal <= availH){ fontSize=fs; break; }
-    cellPad = Math.max(1, cellPad-0.1);
+  // ── FONT SIZE DINÂMICO: caber TUDO em 1 página garantido ──
+  const availH = PH - y - 38; // espaço disponível menos assinaturas e margens
+  const nRows = mpRows.length + 1; // +1 para header
+  const nCatRows = mpRows.filter(r=>Array.isArray(r)&&r[0]?.styles?.fillColor).length; // linhas de categoria
+
+  // Testar de maior para menor — usar estimativa conservadora (jsPDF usa ~0.55mm por pt + padding)
+  let fontSize = 8, cellPad = 2;
+  let found = false;
+  for(let fs=8; fs>=4.5; fs-=0.25){
+    for(let cp=2; cp>=0.8; cp-=0.2){
+      const rowH  = fs*0.5 + cp*2;        // altura linha normal
+      const catH  = fs*0.5 + cp*2 + 0.5;  // categoria é levemente maior
+      const estTotal = (nRows - nCatRows)*rowH + nCatRows*catH;
+      if(estTotal <= availH){
+        fontSize=fs; cellPad=cp; found=true; break;
+      }
+    }
+    if(found) break;
   }
+  if(!found){ fontSize=4.5; cellPad=0.8; } // mínimo absoluto
 
   doc.autoTable({startY:y,
     head:[['Ingrediente','Preparo','Total (g)','Total (kg)','Marca','Lote Fornecedor','Temp °C']],
@@ -2117,17 +2126,21 @@ function gerarRelatorio(){
     headStyles:{fillColor:COR_MP_L,textColor:[26,29,35],fontStyle:'bold',fontSize:fontSize},
     columnStyles:{0:{cellWidth:45},1:{cellWidth:16},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:33},5:{cellWidth:33},6:{cellWidth:15}},
     margin:{left:L,right:10},
-    pageBreak:'avoid'});
+    pageBreak:'avoid',
+    didParseCell:(data)=>{
+      // garantir que linhas de categoria não quebram para próxima página
+      if(data.cell.raw?.styles?.fillColor) data.row.pageBreakBefore=false;
+    }
+  });
 
-  y=doc.lastAutoTable.finalY+8;
+  y=doc.lastAutoTable.finalY+4;
 
-  // assinaturas
-  if(y>PH-20){doc.addPage();pageHeader();y=27;}
-  doc.setFontSize(8); doc.setFont('helvetica','normal');
+  // assinaturas — sempre na mesma página, sem criar nova
+  doc.setFontSize(7); doc.setFont('helvetica','normal');
   doc.text(`Data de fabricação: ${dateFab}`,L,y);
-  doc.text(`Lote: ${lote}`,130,y); y+=12;
+  doc.text(`Lote: ${lote}`,130,y); y+=10;
   doc.line(L,y,L+76,y); doc.line(130,y,R,y); y+=4;
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.text('Responsável pelo preenchimento',L,y);
   doc.text('Validação do responsável técnico',130,y);
 
