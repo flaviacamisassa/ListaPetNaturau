@@ -727,6 +727,20 @@ function renderProducao() {
 
   let html = renderDateBar();
 
+  // ── AVISO: editando produção do histórico ──
+  if(state.editingHistId){
+    html+=`<div style="background:#E8F4FD;border:1.5px solid #2980B9;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <i class="fas fa-edit" style="color:#2980B9;font-size:18px;flex-shrink:0"></i>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1A5276;margin-bottom:2px">Editando produção do histórico</div>
+        <div style="font-size:11px;color:#2471A3">O registro original está preservado. Ele só será substituído quando você gerar o PDF.</div>
+        <button class="btn btn-sm" style="margin-top:6px;font-size:11px;border-color:#E74C3C;color:#E74C3C" onclick="cancelarEdicaoHist()">
+          <i class="fas fa-times"></i> Cancelar edição e preservar histórico
+        </button>
+      </div>
+    </div>`;
+  }
+
   // ── AVISO: produção já existe para essa data ──
   const histExist=histForDate(state.today.date);
   if(histExist){
@@ -2153,7 +2167,13 @@ function gerarRelatorio(){
       selected:JSON.parse(JSON.stringify(sel))
     };
     if(!state.db.history) state.db.history=[];
-    state.db.history=state.db.history.filter(h=>h.date!==state.today.date);
+    // remove entrada do mesmo dia E a entrada que estava sendo editada
+    state.db.history=state.db.history.filter(h=>{
+      if(h.date===state.today.date) return false;
+      if(state.editingHistId && h.id===state.editingHistId) return false;
+      return true;
+    });
+    state.editingHistId=null; // limpa o ID de edição
     state.db.history.unshift(hist);
     if(state.db.history.length>90) state.db.history=state.db.history.slice(0,90);
     saveData();
@@ -2813,6 +2833,17 @@ function confirmDeletePetHist(id){
   toast('🗑 Registro excluído');
 }
 
+function cancelarEdicaoHist(){
+  state.editingHistId=null;
+  state.today={selected:{},date:todayStr()};
+  if(!state.comTable) state.comTable={};
+  if(!state.comFixed) state.comFixed={};
+  state.comTable={};
+  state.comFixed={};
+  navigate('historico');
+  toast('✅ Edição cancelada. Histórico preservado.',3000);
+}
+
 function editHistEntry(id){
   const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
   // carrega a seleção salva de volta para o estado de hoje
@@ -2824,10 +2855,11 @@ function editHistEntry(id){
     else delete state.today.selected[rid];
   });
   state.today.date = h.date;
-  // remove do histórico para ser regravado ao gerar PDF
-  state.db.history=state.db.history.filter(x=>x.id!==id);
+  // NÃO remove do histórico agora — só remove quando o PDF for gerado
+  // guarda o ID para saber qual registro substituir
+  state.editingHistId = id;
   navigate('producao');
-  toast('✏️ Produção carregada para edição — ajuste e gere o PDF novamente.',4000);
+  toast('✏️ Produção carregada — ajuste e gere o PDF. O histórico original está preservado até lá.',5000);
 }
 
 function deleteHistEntry(id){
