@@ -1550,8 +1550,12 @@ function normalizeName(name){
     {names:['moranga','abobora','abobora moranga','abobora-moranga','aboboro','abobura','moranga cabotia','cabotia'], out:'Abóbora Moranga'},
     // ABOBRINHA
     {names:['abobrinha','abobrinha italiana','aboborinha','aborrinha','aborinha','abobrinha italina','abrinha'], out:'Abobrinha Italiana'},
-    // SOBRECOXA — todas as variações
-    {names:['sobrecoxa','frango/sobrecoxa','sobrecoxa de frango','coxa e sobrecoxa','file de sobrecoxa','file sobrecoxa','sobrecoxa frango','coxa sobrecoxa','file de sobrecoxa'], out:'Sobrecoxa'},
+    // SOBRECOXA
+    {names:['sobrecoxa','frango/sobrecoxa','sobrecoxa de frango','coxa e sobrecoxa','file de sobrecoxa','file sobrecoxa','sobrecoxa frango','coxa sobrecoxa'], out:'Sobrecoxa'},
+    // FRANGO (genérico — não confundir com peito/sobrecoxa)
+    {names:['frango','peito de frango','peito frango'], out:'Peito de Frango'},
+    // PERU — peito de peru e "peru" sozinho
+    {names:['peru','peito de peru','peito peru','peto de peru'], out:'Peito de Peru'},
     // ARROZ
     {names:['arroz'], out:'Arroz Branco'},
     {names:['arroz branco'], out:'Arroz Branco'},
@@ -1569,8 +1573,8 @@ function normalizeName(name){
     {names:['couve','cuve','couve manteiga','couve-manteiga'], out:'Couve'},
     // COUVE-FLOR
     {names:['couve flor','couve-flor','couveflor','couve-flo'], out:'Couve-flor'},
-    // FÍGADO BOVINO
-    {names:['figado bovino','figado de boi','figado bov','fig bovino','figado bovi'], out:'Fígado Bovino'},
+    // FÍGADO BOVINO — todas as abreviações
+    {names:['figado bovino','figado de boi','figado bov','fig bovino','figado bovi','figado bov','fígado bov'], out:'Fígado Bovino'},
     // FÍGADO DE FRANGO
     {names:['figado de frango','figado frango','fig de frango'], out:'Fígado de Frango'},
     // FÍGADO DE PATO
@@ -1585,10 +1589,6 @@ function normalizeName(name){
     {names:['batata doce','batata-doce','batatadoce'], out:'Batata Doce'},
     // BATATA INGLESA
     {names:['batata inglesa','batata-inglesa','batata ing'], out:'Batata Inglesa'},
-    // PEITO DE FRANGO
-    {names:['peito de frango','peito frango'], out:'Peito de Frango'},
-    // PEITO DE PERU
-    {names:['peito de peru','peito peru','peru','peto de peru'], out:'Peito de Peru'},
     // LOMBO SUÍNO
     {names:['lombo','lombo suino'], out:'Lombo Suíno'},
     // PERNIL SUÍNO
@@ -1603,15 +1603,18 @@ function normalizeName(name){
     {names:['baroa','batata baroa','mandioquinha','barroa'], out:'Baroa'},
     // VAGEM
     {names:['vagem','vagern','vagen'], out:'Vagem'},
-    // AZEITE
-    {names:['azeite','azeite extra virgem','azeite de oliva','azeite extravirgem'], out:'Azeite Extra Virgem'},
-    // ÓLEOS
-    {names:['oleo de coco'], out:'Óleo de Coco'},
-    {names:['oleo de girassol'], out:'Óleo de Girassol'},
-    {names:['oleo de canola'], out:'Óleo de Canola'},
-    {names:['oleo de soja'], out:'Óleo de Soja'},
+    // AZEITE — todas as variações para um único nome
+    {names:['azeite','azeite extra virgem','azeite de oliva','azeite extravirgem','azeite e.v.','azeite ev'], out:'Azeite Extra Virgem'},
+    // ÓLEO DE COCO — com e sem acento, com e sem hífen
+    {names:['oleo de coco','oleo de coco','oleo coco','oleo de coco (virgem)'], out:'Óleo de Coco'},
+    // ÓLEO DE GIRASSOL
+    {names:['oleo de girassol','oleo girassol'], out:'Óleo de Girassol'},
+    // ÓLEO DE CANOLA
+    {names:['oleo de canola','oleo canola'], out:'Óleo de Canola'},
+    // ÓLEO DE SOJA
+    {names:['oleo de soja','oleo soja'], out:'Óleo de Soja'},
     // BANHA SUÍNA
-    {names:['banha suina','banha','banha de porco'], out:'Banha Suína'},
+    {names:['banha suina','banha','banha de porco','banha suina'], out:'Banha Suína'},
     // CÚRCUMA
     {names:['curcuma','curcuma em po','acafrao da terra'], out:'Cúrcuma'},
     // AGRIÃO
@@ -1623,7 +1626,7 @@ function normalizeName(name){
     // COTTAGE
     {names:['cottage','queijo cottage','cottage cheese'], out:'Cottage'},
     // OVO
-    {names:['ovo','ovo de galinha','ovos'], out:'Ovo'},
+    {names:['ovo','ovo de galinha','ovos','ovo de galinha (90g)'], out:'Ovo'},
     // TOMATE
     {names:['tomate com semente','tomate'], out:'Tomate'},
     // ESPINAFRE
@@ -1633,6 +1636,17 @@ function normalizeName(name){
     // PULMÃO
     {names:['pulmao de boi'], out:'Pulmão de Boi'},
     {names:['pulmao de porco'], out:'Pulmão de Porco'},
+    // SAL ROSA — separado do sal normal
+    {names:['sal rosa','sal do himalaia','sal rosa do himalaia'], out:'Sal Rosa'},
+    // SAL MARINHO
+    {names:['sal marinho','sal marinho iodado'], out:'Sal Marinho'},
+    // MOELA — separar por animal
+    {names:['moela','moela de frango'], out:'Moela de Frango'},
+    {names:['moela de pato'], out:'Moela de Pato'},
+    // PATINHO
+    {names:['patinho','patinho bovino'], out:'Patinho'},
+    // ACÉM
+    {names:['acem','acem moido','acem bovino'], out:'Acém Moído'},
   ];
 
   // compara sempre com alias normalizado
@@ -1650,14 +1664,18 @@ const PROTEINAS_KEYWORDS=['frango','sobrecoxa','peito de frango','pato','patinho
 const PROTEINAS_EXACT=['sobrecoxa','frango','tilápia','patinho','músculo','músculo bovino','acém moído','pernil suíno','lombo suíno','filé mignon suíno','peito de frango','peito de peru','coração de boi','coração de frango','coração bovino','fígado bovino','fígado de frango','fígado de boi','fígado de pato','moela de pato','moela','língua bovina','língua','bucho bovino','ovo','ovo de galinha','ricota','cottage','carne'];
 
 function categorizaIngrediente(name){
-  const n=normalizeName(name).toLowerCase();
-  // PROTEÍNAS: carnes, vísceras, ovos, ricota, cottage
-  const protTerms=['frango','sobrecoxa','patinho','pato','tilápia','tilapia','músculo','musculo','acém','acem','pernil','lombo','peru','fígado','figado','língua','lingua','bucho','coração','coracao','moela','ovo','ricota','cottage','carne','filé','file','peito de frango','peito de peru','músculo bovino'];
+  const n=normalizeName(name).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  // PROTEÍNAS: carnes, vísceras, ovos, laticínios
+  const protTerms=['frango','sobrecoxa','patinho','pato','tilapia','musculo','acem','pernil','lombo','peru',
+                   'figado','lingua','bucho','coracao','moela','ovo','ricota','cottage','carne','file','peito'];
   if(protTerms.some(t=>n.includes(t))) return 'proteina';
   // VEGETAIS/LEGUMES
-  const vegTerms=['cenoura','chuchu','abobrinha','abóbora','moranga','brócolis','brocolis','couve','batata','baroa','inhame','cará','cara','vagem','espinafre','tomate','berinjela','agrião','agrao','couve-flor','couve flor','beterraba','pepino','pimentão','repolho','mandioca','arroz','aveia','lentilha','grão','grao','ervilha','vagem','milho','feijão','feijao'];
+  const vegTerms=['cenoura','chuchu','abobrinha','abobora','moranga','brocolis','couve','batata','baroa',
+                  'inhame','cara','vagem','espinafre','tomate','berinjela','agriao','couve-flor','couve flor',
+                  'beterraba','pepino','pimentao','repolho','mandioca','arroz','aveia','lentilha','grao',
+                  'ervilha','milho','feijao','alface','rucula'];
   if(vegTerms.some(t=>n.includes(t))) return 'vegetal';
-  // tudo mais = suplemento/complemento
   return 'suplemento';
 }
 
@@ -2846,20 +2864,111 @@ function cancelarEdicaoHist(){
 
 function editHistEntry(id){
   const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
+
   // carrega a seleção salva de volta para o estado de hoje
   state.today.selected = JSON.parse(JSON.stringify(h.selected||{}));
-  // garante que cada seleção tem a receita atualizada do db
   Object.keys(state.today.selected).forEach(rid=>{
     const r=state.db.recipes.find(x=>x.id===rid);
     if(r) state.today.selected[rid].recipe=r;
     else delete state.today.selected[rid];
   });
   state.today.date = h.date;
-  // NÃO remove do histórico agora — só remove quando o PDF for gerado
-  // guarda o ID para saber qual registro substituir
+
+  // ── reconstruir comTable e comFixed a partir do histórico ──
+  state.comTable = {};
+  state.comFixed = {};
+
+  Object.values(h.selected||{}).forEach(s=>{
+    const r=s.recipe; if(!r||r.type!=='comercial'||r.barf) return;
+    const rid=r.id;
+
+    // pacotes fixos
+    if(!state.comFixed[rid]) state.comFixed[rid]={p200:0,p500:0};
+    state.comFixed[rid].p200 = s.p200||0;
+    state.comFixed[rid].p500 = s.p500||0;
+
+    // clientes personalizados → reconstruir linhas da tabela
+    (s.customs||[]).forEach(c=>{
+      // procurar se já existe linha para este cliente
+      const existingKey=Object.keys(state.comTable).find(k=>state.comTable[k].name===c.name);
+      const rowKey = existingKey || ('cr_hist_'+rid+'_'+c.name.replace(/\s/g,'_'));
+      if(!state.comTable[rowKey]) state.comTable[rowKey]={name:c.name, bags:0, cells:{}};
+      state.comTable[rowKey].cells[rid]={g:c.g, qty:c.qty};
+      // extrair sacolas do nome se tiver "(X sacolas)"
+      const bagMatch=c.name.match(/\((\d+) sacola/);
+      if(bagMatch) state.comTable[rowKey].bags=parseInt(bagMatch[1]);
+    });
+  });
+
   state.editingHistId = id;
+  closeModal();
   navigate('producao');
-  toast('✏️ Produção carregada — ajuste e gere o PDF. O histórico original está preservado até lá.',5000);
+  toast('✏️ Produção carregada — tabela de cozidas preenchida. Ajuste e gere o PDF.',5000);
+}
+
+function viewHistDetail(id){
+  const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
+  const mp=computeMP(h.selected||{});
+  const totalMP=mp.reduce((a,x)=>a+x.total,0);
+
+  // separar comerciais e personalizadas
+  const selArr=Object.values(h.selected||{}).filter(s=>s.recipe);
+  const comerciais=selArr.filter(s=>s.recipe.type==='comercial');
+  const personalizadas=selArr.filter(s=>s.recipe.type==='personalizada');
+
+  // seção de comerciais com clientes
+  let comHtml='';
+  if(comerciais.length){
+    comHtml=`<div class="section-label" style="margin-top:14px;color:var(--blue)">Dietas Comerciais</div>`;
+    comerciais.forEach(s=>{
+      const r=s.recipe;
+      const nome=r.name.replace('Dieta Comercial ','')+(r.barf?' [BARF]':'');
+      const tg=(s.p200||0)*200+(s.p500||0)*500+(s.customs||[]).reduce((a,c)=>a+c.qty*c.g,0);
+      comHtml+=`<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--blue)">${nome} — ${(tg/1000).toFixed(2)}kg</div>`;
+      if((s.p200||0)>0) comHtml+=`<div style="font-size:11px;color:var(--text-2);padding-left:8px">${s.p200}×200g</div>`;
+      if((s.p500||0)>0) comHtml+=`<div style="font-size:11px;color:var(--text-2);padding-left:8px">${s.p500}×500g</div>`;
+      (s.customs||[]).forEach(c=>{
+        comHtml+=`<div style="font-size:11px;color:var(--text-2);padding-left:8px">${c.qty}×${c.g}g — ${c.name}</div>`;
+      });
+      comHtml+=`</div>`;
+    });
+  }
+
+  // seção de personalizadas
+  let perHtml='';
+  if(personalizadas.length){
+    perHtml=`<div class="section-label" style="margin-top:14px;color:var(--green-dark)">Dietas Personalizadas</div>`;
+    perHtml+=personalizadas.map(s=>{
+      const r=s.recipe;
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;font-weight:600">${r.tutor} — ${r.dog} — ${r.cat}</div>`;
+    }).join('');
+  }
+
+  openModal(`<div class="modal-title">${h.dateStr||h.date} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-val">${selArr.length}</div><div class="stat-lbl">Receitas</div></div>
+      <div class="stat-box"><div class="stat-val">${h.totalKg}</div><div class="stat-lbl">kg total</div></div>
+      <div class="stat-box"><div class="stat-val">${mp.length}</div><div class="stat-lbl">Ingredientes</div></div>
+    </div>
+    ${comHtml}
+    ${perHtml}
+    <div class="section-label" style="margin-top:14px">Matéria-prima utilizada</div>
+    ${mp.map(e=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span>${e.name}${e.raw?' *cru':''}</span>
+      <span style="font-weight:700;font-family:'DM Mono',monospace">${(e.total/1000).toFixed(3)} kg</span>
+    </div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:700;font-size:14px;color:var(--green-dark);border-top:2px solid var(--green)">
+      <span>TOTAL</span><span style="font-family:'DM Mono',monospace">${(totalMP/1000).toFixed(3)} kg</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="gen-btn" style="border-radius:10px;flex:1" onclick="closeModal();regenarPDFHist('${id}')">
+        <i class="fas fa-file-pdf"></i> Ver PDF
+      </button>
+      <button class="btn btn-primary" style="flex:1;border-radius:10px;padding:14px;font-size:13px;font-weight:700" onclick="editHistEntry('${id}')">
+        <i class="fas fa-edit"></i> Editar produção
+      </button>
+    </div>`);
 }
 
 function deleteHistEntry(id){
@@ -2874,39 +2983,6 @@ function confirmDeleteHist(id){
   state.db.history=state.db.history.filter(x=>x.id!==id);
   saveData(); closeModal(); renderHistorico();
   toast('🗑 Registro excluído');
-}
-
-function viewHistDetail(id){
-  const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
-  const mp=computeMP(h.selected||{});
-  const totalMP=mp.reduce((a,x)=>a+x.total,0);
-
-  // monta lista de receitas com sabor incluído
-  const receitasComSabor=Object.values(h.selected||{}).map(s=>{
-    const r=s.recipe; if(!r) return null;
-    if(r.type==='personalizada') return `${r.tutor} — ${r.dog} — ${r.cat}`;
-    return r.name+(r.barf?' [BARF]':'');
-  }).filter(Boolean);
-
-  openModal(`<div class="modal-title">${h.dateStr||h.date} <button class="btn btn-sm" onclick="closeModal()">✕</button></div>
-    <div class="stats-row">
-      <div class="stat-box"><div class="stat-val">${receitasComSabor.length}</div><div class="stat-lbl">Receitas</div></div>
-      <div class="stat-box"><div class="stat-val">${h.totalKg}</div><div class="stat-lbl">kg total</div></div>
-      <div class="stat-box"><div class="stat-val">${mp.length}</div><div class="stat-lbl">Ingredientes</div></div>
-    </div>
-    <div class="section-label">Receitas produzidas</div>
-    ${receitasComSabor.map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">${n}</div>`).join('')}
-    <div class="section-label" style="margin-top:14px">Matéria-prima utilizada</div>
-    ${mp.map(e=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-      <span>${e.name}${e.raw?' 🥩':''}</span>
-      <span style="font-weight:700;font-family:'DM Mono',monospace">${(e.total/1000).toFixed(3)} kg</span>
-    </div>`).join('')}
-    <div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:700;font-size:14px;color:var(--green-dark);border-top:2px solid var(--green)">
-      <span>TOTAL</span><span style="font-family:'DM Mono',monospace">${(totalMP/1000).toFixed(3)} kg</span>
-    </div>
-    <button class="gen-btn" style="border-radius:10px;width:100%;margin-top:12px" onclick="closeModal();regenarPDFHist('${id}')">
-      <i class="fas fa-file-pdf"></i> Ver PDF desta produção
-    </button>`);
 }
 
 function regenarPDFHist(id){
