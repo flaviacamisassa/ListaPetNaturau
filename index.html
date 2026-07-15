@@ -1594,7 +1594,7 @@ function normalizeName(name){
     // PERNIL SUÍNO
     {names:['pernil','pernil suino'], out:'Pernil Suíno'},
     // TILÁPIA
-    {names:['tilapia','tilapa','tilapsia'], out:'Tilápia'},
+    {names:['tilapia','tilapa','tilapsia','file de tilapia','file tilapia','file de tilapa','filet de tilapia'], out:'Tilápia'},
     // INHAME
     {names:['inhame','inghame','inhane'], out:'Inhame'},
     // CARÁ
@@ -1647,6 +1647,9 @@ function normalizeName(name){
     {names:['patinho','patinho bovino'], out:'Patinho'},
     // ACÉM
     {names:['acem','acem moido','acem bovino'], out:'Acém Moído'},
+    // SUPLEMENTOS FOOD DOG — unificar grafias (maiúscula/minúscula e nome curto)
+    {names:['fit fibras','food dog fit fibras','fooddog fit fibras','food dog fitfibras'], out:'Food Dog Fit Fibras'},
+    {names:['baixo fosforo','food dog baixo fosforo','fooddog baixo fosforo'], out:'Food Dog Baixo Fósforo'},
   ];
 
   // compara sempre com alias normalizado
@@ -1668,13 +1671,13 @@ function categorizaIngrediente(name){
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   // PROTEÍNAS: carnes, vísceras, ovos, laticínios
   const protTerms=['frango','sobrecoxa','patinho','pato','tilapia','musculo','acem','pernil','lombo','peru',
-                   'figado','lingua','bucho','coracao','moela','ovo','ricota','cottage','carne','file','peito'];
+                   'figado','lingua','bucho','coracao','moela','ovo','ricota','cottage','carne','file','peito','osso'];
   if(protTerms.some(t=>n.includes(t))) return 'proteina';
-  // VEGETAIS/LEGUMES
+  // VEGETAIS/LEGUMES/FRUTAS
   const vegTerms=['cenoura','chuchu','abobrinha','abobora','moranga','brocolis','couve','batata','baroa',
                   'inhame','cara','vagem','espinafre','tomate','berinjela','agriao','couve-flor','couve flor',
                   'beterraba','pepino','pimentao','repolho','mandioca','arroz','aveia','lentilha','grao',
-                  'ervilha','milho','feijao','alface','rucula'];
+                  'ervilha','milho','feijao','alface','rucula','maca','mamao'];
   if(vegTerms.some(t=>n.includes(t))) return 'vegetal';
   return 'suplemento';
 }
