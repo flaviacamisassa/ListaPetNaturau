@@ -3191,145 +3191,173 @@ function gerarRelatorioPeriodo(){
   if(!de||!ate){toast('⚠️ Selecione o período');return;}
   if(de>ate){toast('⚠️ Data inicial deve ser anterior à final');return;}
 
-  // coleta todos os dias do período com produção (receitas ou petiscos)
   const history=(state.db.history||[]).filter(h=>h.date>=de&&h.date<=ate);
-  const petHistory=(state.db.petiscosHistory||[]).filter(p=>p.date>=de&&p.date<=ate);
+  let petHistory=(state.db.petiscosHistory||[]).filter(p=>p.date>=de&&p.date<=ate);
+  if(!history.length && !petHistory.length){toast('⚠️ Nenhuma produção encontrada nesse período');return;}
 
-  // monta set de todas as colunas de petiscos/caldos/saborizantes que aparecem no período
-  const itemCols=[...new Set(petHistory.map(p=>p.item))].sort((a,b)=>a.localeCompare(b,'pt'));
-
-  // monta mapa data -> {receitas: kg, [item]: kg}
-  const dateMap={};
-  history.forEach(h=>{
-    if(!dateMap[h.date]) dateMap[h.date]={};
-    dateMap[h.date]['__receitas']=(dateMap[h.date]['__receitas']||0)+parseFloat(h.totalKg||0);
+  // ── unifica variantes de maiúscula/minúscula do mesmo item (ex: "Pescoço de Pato" = "Pescoço de pato") ──
+  const upperCount=s=>(s.match(/[A-ZÀ-ÞÁÉÍÓÚÂÊÔÃÕÇ]/g)||[]).length;
+  const variants={};
+  petHistory.forEach(p=>{const k=p.item.toLowerCase(); (variants[k]=variants[k]||{})[p.item]=(variants[k][p.item]||0)+1;});
+  const canon={};
+  Object.entries(variants).forEach(([k,vs])=>{
+    canon[k]=Object.entries(vs).sort((a,b)=> b[1]-a[1] || upperCount(a[0])-upperCount(b[0]) || a[0].localeCompare(b[0],'pt'))[0][0];
   });
-  petHistory.forEach(p=>{
-    if(!dateMap[p.date]) dateMap[p.date]={};
-    dateMap[p.date][p.item]=(dateMap[p.date][p.item]||0)+p.kg;
-  });
+  petHistory=petHistory.map(p=>({...p,item:canon[p.item.toLowerCase()]}));
 
-  const dates=Object.keys(dateMap).sort();
-  if(!dates.length){toast('⚠️ Nenhuma produção encontrada nesse período');return;}
+  const CATLABEL={petiscos:'Petiscos',caldos:'Caldos',saborizantes:'Saborizantes',nutrally:'Nutrally'};
+  const CATORDER={petiscos:0,caldos:1,saborizantes:2,nutrally:3};
 
-  // ── GERAR PDF (paisagem) ──
+  // resumo por produto
+  const prodMap={};
+  petHistory.forEach(p=>{ if(!prodMap[p.item]) prodMap[p.item]={cat:p.category,total:0}; prodMap[p.item].total+=p.kg; });
+  const resumo=Object.entries(prodMap).map(([nome,v])=>({nome,cat:v.cat,total:v.total}))
+    .sort((a,b)=> (CATORDER[a.cat]??9)-(CATORDER[b.cat]??9) || a.nome.localeCompare(b.nome,'pt'));
+
+  const receitasTotal=history.reduce((a,h)=>a+parseFloat(h.totalKg||0),0);
+  const catTotals={petiscos:0,caldos:0,saborizantes:0,nutrally:0};
+  petHistory.forEach(p=>{ if(catTotals[p.category]!=null) catTotals[p.category]+=p.kg; });
+  const totPet=Object.values(catTotals).reduce((a,v)=>a+v,0);
+  const totalGeral=receitasTotal+totPet;
+
+  // ── PDF (retrato) ──
   const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  const PW=297, PH=210, L=10, R=287;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const PW=210, PH=297, L=14, R=196, W=R-L;
+  const INK=[26,29,35], SEP=[218,222,205], ALT=[248,250,240];
 
   // cabeçalho
-  doc.setFillColor(181,205,90);
-  doc.rect(0,0,PW,22,'F');
-  doc.setTextColor(26,29,35);
-  doc.setFontSize(16); doc.setFont('helvetica','bold');
-  doc.text('Relatório de Produção PetNaturau', L, 10);
-
-  const [dY,dM,dD]=de.split('-');
-  const [aY,aM,aD]=ate.split('-');
+  doc.setFillColor(...COR_PERSONAL); doc.rect(0,0,PW,22,'F');
+  doc.setTextColor(...INK); doc.setFontSize(16); doc.setFont('helvetica','bold');
+  doc.text('Relatório de Produção PetNaturau', L, 13);
+  const [dY,dM,dD]=de.split('-'), [aY,aM,aD]=ate.split('-');
   const periodoStr=`De ${parseInt(dD)} de ${mesExtenso(parseInt(dM))} de ${dY} até ${parseInt(aD)} de ${mesExtenso(parseInt(aM))} de ${aY}`;
-  doc.setFontSize(10); doc.setFont('helvetica','normal');
-  doc.text(periodoStr, L, 17);
-  doc.setTextColor(26,29,35);
+  doc.setFontSize(9.5); doc.setFont('helvetica','normal');
+  doc.text(periodoStr, L, 29);
+  doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, R, 29, {align:'right'});
+  let y=37;
 
-  let y=28;
-  doc.setFontSize(9);
-  doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, R, 17, {align:'right'});
+  const sectionTitle=(txt,sub)=>{
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(...INK);
+    doc.text(txt, L, y); y+=sub?4.5:5.5;
+    if(sub){ doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(90,95,80); doc.text(sub,L,y); y+=3.5; doc.setTextColor(...INK); }
+  };
+  const subTitle=txt=>{ doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(...INK); doc.text(txt,L,y); y+=4.5; };
 
-  // monta tabela principal
-  const head=['Data','Receitas (kg)',...itemCols.map(c=>c+' (kg)'),'TOTAL (kg)'];
-  const body=dates.map(date=>{
-    const row=dateMap[date];
-    const receitasKg=row['__receitas']||0;
-    const cols=itemCols.map(c=>row[c]?row[c].toFixed(2):'—');
-    const totalDia=receitasKg+itemCols.reduce((a,c)=>a+(row[c]||0),0);
-    // coluna de receitas em laranja
-    return [
-      fmtDateShort(date),
-      {content:receitasKg>0?receitasKg.toFixed(2):'—', styles:{fillColor:[253,224,197],fontStyle:'bold'}},
-      ...cols,
-      totalDia.toFixed(2)
-    ];
-  });
-
-  // linha de totais
-  const totalReceitas=dates.reduce((a,d)=>a+(dateMap[d]['__receitas']||0),0);
-  const totalPorItem=itemCols.map(c=>dates.reduce((a,d)=>a+(dateMap[d][c]||0),0));
-  const totalGeral=totalReceitas+totalPorItem.reduce((a,v)=>a+v,0);
-  body.push([
-    {content:'TOTAL DO PERÍODO',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}},
-    {content:totalReceitas.toFixed(2),styles:{fontStyle:'bold',fillColor:[253,224,197],textColor:[26,29,35]}},
-    ...totalPorItem.map(v=>({content:v.toFixed(2),styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}})),
-    {content:totalGeral.toFixed(2),styles:{fontStyle:'bold',fillColor:[181,205,90],textColor:[26,29,35]}}
+  // ═══ 1 · RESUMO POR PRODUTO ═══
+  sectionTitle('1 · RESUMO POR PRODUTO','Total produzido de cada item no período, agrupado por categoria.');
+  const body1=[[
+    {content:'Receitas (cozidas + cruas)',styles:{fontStyle:'bold',fillColor:COR_COMERCIAL_L}},
+    {content:'Receitas',styles:{fillColor:COR_COMERCIAL_L}},
+    {content:receitasTotal.toFixed(2),styles:{halign:'right',fontStyle:'bold',fillColor:COR_COMERCIAL_L}}
+  ]];
+  resumo.forEach(p=>body1.push([p.nome,(CATLABEL[p.cat]||p.cat),{content:p.total.toFixed(2),styles:{halign:'right'}}]));
+  body1.push([
+    {content:'TOTAL GERAL DO PERÍODO',colSpan:2,styles:{fontStyle:'bold',fillColor:COR_PERSONAL,textColor:INK}},
+    {content:totalGeral.toFixed(2),styles:{halign:'right',fontStyle:'bold',fillColor:COR_PERSONAL,textColor:INK}}
   ]);
-
   doc.autoTable({
-    startY:y, head:[head], body,
-    styles:{fontSize:8,cellPadding:2.5,halign:'center',textColor:[26,29,35]},
-    headStyles:{fillColor:COR_PERSONAL_L,textColor:[26,29,35],fontStyle:'bold',fontSize:8},
-    columnStyles:{
-      0:{halign:'left',fontStyle:'bold',cellWidth:25},
-      1:{fillColor:[253,237,220]} // laranja claro na coluna receitas
-    },
-    margin:{left:L,right:10},
-    didDrawPage:(data)=>{
-      doc.setFontSize(7); doc.setTextColor(150,150,150);
-      doc.text(`Página ${doc.internal.getNumberOfPages()}`, PW-15, PH-6);
-      doc.setTextColor(26,29,35);
-    }
+    startY:y, head:[['Produto','Categoria','Total (kg)']], body:body1, theme:'plain',
+    styles:{fontSize:8.5,cellPadding:2.2,textColor:INK},
+    headStyles:{fillColor:COR_PERSONAL_L,textColor:INK,fontStyle:'bold',lineColor:COR_PERSONAL,lineWidth:{bottom:0.4}},
+    columnStyles:{0:{halign:'left'},1:{halign:'left',cellWidth:34},2:{halign:'right',cellWidth:26}},
+    alternateRowStyles:{fillColor:ALT},
+    margin:{left:L,right:L}
   });
+  y=doc.lastAutoTable.finalY+9;
 
-  y=doc.lastAutoTable.finalY+8;
-
-  // ── TABELA DE TOTAIS POR CATEGORIA ──────────────────────────
-  const PETISCO_CATS=[
-    {key:'petiscos',    label:'Petiscos'},
-    {key:'caldos',      label:'Caldos'},
-    {key:'saborizantes',label:'Saborizantes'},
-    {key:'nutrally',    label:'Nutrally'},
+  // ═══ 2 · TOTAIS POR CATEGORIA ═══
+  if(y>PH-70){doc.addPage(); y=18;}
+  sectionTitle('2 · TOTAIS POR CATEGORIA');
+  const cRow=(lbl,val,fill,bold)=>[
+    {content:lbl,styles:Object.assign({halign:'left'},fill?{fillColor:fill}:{},bold?{fontStyle:'bold'}:{})},
+    {content:val,styles:Object.assign({halign:'right'},fill?{fillColor:fill}:{},bold?{fontStyle:'bold'}:{})}
   ];
+  const body2=[
+    cRow('Receitas', receitasTotal.toFixed(2)+' kg', COR_COMERCIAL_L, false),
+    cRow('Petiscos', catTotals.petiscos.toFixed(2)+' kg'),
+    cRow('Caldos', catTotals.caldos.toFixed(2)+' kg'),
+    cRow('Saborizantes', catTotals.saborizantes.toFixed(2)+' kg'),
+    cRow('Nutrally', catTotals.nutrally.toFixed(2)+' kg'),
+    cRow('TOTAL PETISCOS & MASTIGÁVEIS', totPet.toFixed(2)+' kg', COR_PERSONAL_L, true),
+    cRow('TOTAL GERAL', totalGeral.toFixed(2)+' kg', COR_PERSONAL, true)
+  ];
+  doc.autoTable({
+    startY:y, head:[['Categoria','Total no período']], body:body2, theme:'plain',
+    styles:{fontSize:9,cellPadding:2.6,textColor:INK},
+    headStyles:{fillColor:COR_PERSONAL_L,textColor:INK,fontStyle:'bold',lineColor:COR_PERSONAL,lineWidth:{bottom:0.4}},
+    columnStyles:{0:{halign:'left'},1:{halign:'right',cellWidth:55}},
+    margin:{left:L,right:L}
+  });
+  y=doc.lastAutoTable.finalY+9;
 
-  // calcular total por categoria somando os itens de cada categoria
-  const catTotals=PETISCO_CATS.map(cat=>{
-    const items=state.db.petiscosItems?.[cat.key]||[];
-    const total=petHistory.filter(p=>p.category===cat.key).reduce((a,p)=>a+(p.kg||0),0);
-    return {label:cat.label, total};
-  }).filter(c=>c.total>0);
+  // ═══ 3 · DETALHAMENTO DIÁRIO ═══
+  if(y>PH-55){doc.addPage(); y=18;}
+  sectionTitle('3 · DETALHAMENTO DIÁRIO');
 
-  if(catTotals.length>0){
-    const totalPetiscos=catTotals.reduce((a,c)=>a+c.total,0);
-    const catRows=[
-      ...catTotals.map(c=>[c.label, c.total.toFixed(2)+' kg']),
-      [{content:'TOTAL PETISCOS & MASTIGÁVEIS',styles:{fontStyle:'bold',fillColor:[238,244,208],textColor:[26,29,35]}},
-       {content:totalPetiscos.toFixed(2)+' kg',styles:{fontStyle:'bold',fillColor:[181,205,90],textColor:[26,29,35]}}]
-    ];
-
-    // nova página se não couber
-    if(y+catRows.length*10+20>PH){doc.addPage(); y=15;}
-
-    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(26,29,35);
-    doc.text('TOTAIS POR CATEGORIA — PETISCOS & MASTIGÁVEIS', L, y); y+=4;
-
+  // 3.1 receitas por dia (dois pares lado a lado)
+  const rec=history.map(h=>({date:h.date,kg:parseFloat(h.totalKg||0)})).filter(r=>r.kg>0).sort((a,b)=>a.date.localeCompare(b.date));
+  if(rec.length){
+    subTitle('3.1 · Receitas por dia');
+    const half=Math.ceil(rec.length/2), lC=rec.slice(0,half), rC=rec.slice(half), mx=Math.max(lC.length,rC.length);
+    const body31=[];
+    for(let i=0;i<mx;i++){
+      const l=lC[i], r=rC[i];
+      body31.push([
+        l?fmtDateShort(l.date):'', l?{content:l.kg.toFixed(2),styles:{halign:'right'}}:'',
+        r?fmtDateShort(r.date):'', r?{content:r.kg.toFixed(2),styles:{halign:'right'}}:''
+      ]);
+    }
     doc.autoTable({
-      startY:y,
-      head:[['Categoria','Total no período']],
-      body:catRows,
-      styles:{fontSize:9,cellPadding:3,halign:'center',textColor:[26,29,35]},
-      headStyles:{fillColor:COR_PERSONAL_L,textColor:[26,29,35],fontStyle:'bold',fontSize:9},
-      columnStyles:{0:{halign:'left',cellWidth:80},1:{cellWidth:50,fontStyle:'bold'}},
-      margin:{left:L,right:10}
+      startY:y, head:[['Data','Receitas (kg)','Data','Receitas (kg)']], body:body31, theme:'plain',
+      styles:{fontSize:8.5,cellPadding:2,textColor:INK},
+      headStyles:{fillColor:COR_PERSONAL_L,textColor:INK,fontStyle:'bold',lineColor:COR_PERSONAL,lineWidth:{bottom:0.4}},
+      columnStyles:{0:{cellWidth:W*0.24},1:{halign:'right',cellWidth:W*0.26},2:{cellWidth:W*0.24},3:{halign:'right',cellWidth:W*0.26}},
+      alternateRowStyles:{fillColor:ALT},
+      margin:{left:L,right:L}
     });
     y=doc.lastAutoTable.finalY+8;
   }
 
-  // assinatura final
-  if(y<PH-20){
-    doc.setFontSize(8); doc.setFont('helvetica','normal');
-    doc.text('Responsável técnico: ____________________________________', L, y);
-    doc.text('Data de emissão: _____ / _____ / _______', 200, y);
-    y+=10;
-    doc.setFontSize(7); doc.setTextColor(120,120,120);
-    doc.text('PetNaturau — Controle de Produção e Rastreabilidade — RE002/POP5-POP9', L, y);
-    doc.setTextColor(26,29,35);
+  // 3.2 petiscos e mastigáveis por dia (lista)
+  if(petHistory.length){
+    if(y>PH-40){doc.addPage(); y=18;}
+    subTitle('3.2 · Petiscos e mastigáveis por dia');
+    const pl=petHistory.map(p=>({date:p.date,item:p.item,cat:p.category,kg:p.kg}))
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.item.localeCompare(b.item,'pt'));
+    let prev=null;
+    const body32=pl.map(p=>{
+      const ds=p.date!==prev?fmtDateShort(p.date):''; prev=p.date;
+      return [ ds?{content:ds,styles:{fontStyle:'bold'}}:'', p.item, (CATLABEL[p.cat]||p.cat), {content:p.kg.toFixed(2),styles:{halign:'right'}} ];
+    });
+    doc.autoTable({
+      startY:y, head:[['Data','Produto','Categoria','kg']], body:body32, theme:'plain',
+      styles:{fontSize:8.5,cellPadding:2,textColor:INK},
+      headStyles:{fillColor:COR_PERSONAL_L,textColor:INK,fontStyle:'bold',lineColor:COR_PERSONAL,lineWidth:{bottom:0.4}},
+      columnStyles:{0:{cellWidth:W*0.16},1:{cellWidth:W*0.50},2:{cellWidth:W*0.20},3:{halign:'right',cellWidth:W*0.14}},
+      alternateRowStyles:{fillColor:ALT},
+      margin:{left:L,right:L}
+    });
+    y=doc.lastAutoTable.finalY+10;
+  }
+
+  // assinatura
+  if(y>PH-24){doc.addPage(); y=22;}
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(...INK);
+  doc.text('Responsável técnico: ____________________________________', L, y);
+  doc.text('Data de emissão: _____ / _____ / _______', 128, y);
+  y+=8;
+  doc.setFontSize(7); doc.setTextColor(120,120,120);
+  doc.text('PetNaturau — Controle de Produção e Rastreabilidade — RE002/POP5-POP9', L, y);
+  doc.setTextColor(...INK);
+
+  // rodapé com número de página (todas as páginas)
+  const nP=doc.internal.getNumberOfPages();
+  for(let i=1;i<=nP;i++){
+    doc.setPage(i);
+    doc.setFontSize(7); doc.setTextColor(150,150,150);
+    doc.text(`Página ${i}`, PW-14, PH-8, {align:'right'});
+    doc.setTextColor(...INK);
   }
 
   const deShort=fmtDateShort(de).replace(/\//g,'-');
