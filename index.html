@@ -3205,8 +3205,18 @@ function gerarRelatorioPeriodo(){
   });
   petHistory=petHistory.map(p=>({...p,item:canon[p.item.toLowerCase()]}));
 
-  const CATLABEL={petiscos:'Petiscos',caldos:'Caldos',saborizantes:'Saborizantes',nutrally:'Nutrally'};
-  const CATORDER={petiscos:0,caldos:1,saborizantes:2,nutrally:3};
+  // ── REGRA DE CATEGORIZAÇÃO DO RELATÓRIO (definida pela RT) ──
+  // Caldos -> Saborizantes  |  Pescoço de pato + Orelha suína -> Mastigável  |  Nutrally permanece Nutrally
+  const catRelatorio=(item,cat)=>{
+    const it=(item||'').toLowerCase().trim();
+    if(it==='pescoço de pato'||it==='orelha suína'||it==='orelha suina') return 'mastigavel';
+    if(cat==='caldos') return 'saborizantes';
+    return cat;
+  };
+  petHistory=petHistory.map(p=>({...p,category:catRelatorio(p.item,p.category)}));
+
+  const CATLABEL={petiscos:'Petiscos',saborizantes:'Saborizantes',mastigavel:'Mastigável',nutrally:'Nutrally'};
+  const CATORDER={petiscos:0,saborizantes:1,mastigavel:2,nutrally:3};
 
   // resumo por produto
   const prodMap={};
@@ -3215,7 +3225,7 @@ function gerarRelatorioPeriodo(){
     .sort((a,b)=> (CATORDER[a.cat]??9)-(CATORDER[b.cat]??9) || a.nome.localeCompare(b.nome,'pt'));
 
   const receitasTotal=history.reduce((a,h)=>a+parseFloat(h.totalKg||0),0);
-  const catTotals={petiscos:0,caldos:0,saborizantes:0,nutrally:0};
+  const catTotals={petiscos:0,saborizantes:0,mastigavel:0,nutrally:0};
   petHistory.forEach(p=>{ if(catTotals[p.category]!=null) catTotals[p.category]+=p.kg; });
   const totPet=Object.values(catTotals).reduce((a,v)=>a+v,0);
   const totalGeral=receitasTotal+totPet;
@@ -3276,8 +3286,8 @@ function gerarRelatorioPeriodo(){
   const body2=[
     cRow('Receitas', receitasTotal.toFixed(2)+' kg', COR_COMERCIAL_L, false),
     cRow('Petiscos', catTotals.petiscos.toFixed(2)+' kg'),
-    cRow('Caldos', catTotals.caldos.toFixed(2)+' kg'),
     cRow('Saborizantes', catTotals.saborizantes.toFixed(2)+' kg'),
+    cRow('Mastigável', catTotals.mastigavel.toFixed(2)+' kg'),
     cRow('Nutrally', catTotals.nutrally.toFixed(2)+' kg'),
     cRow('TOTAL PETISCOS & MASTIGÁVEIS', totPet.toFixed(2)+' kg', COR_PERSONAL_L, true),
     cRow('TOTAL GERAL', totalGeral.toFixed(2)+' kg', COR_PERSONAL, true)
