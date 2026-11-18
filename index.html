@@ -229,6 +229,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); bac
     <button class="nav-btn" id="nav-historico" onclick="navigate('historico')">
       <i class="fas fa-history"></i>Histórico
     </button>
+    <button class="nav-btn" id="nav-desidratados" onclick="navigate('desidratados')">
+      <i class="fas fa-wind"></i>Desidratados
+    </button>
     <button class="nav-btn" id="nav-relatorio" onclick="navigate('relatorio')">
       <i class="fas fa-file-invoice"></i>Relatório
     </button>
@@ -485,6 +488,7 @@ function render() {
   else if (state.page==='receitas') renderReceitas();
   else if (state.page==='petiscos') renderPetiscos();
   else if (state.page==='historico') renderHistorico();
+  else if (state.page==='desidratados') renderDesidratados();
   else if (state.page==='relatorio') renderRelatorio();
 }
 
@@ -3154,6 +3158,83 @@ function confirmDeletePetiscoItem(tab, idx){
 }
 
 // ── RELATÓRIO DE PRODUÇÃO POR PERÍODO ────────────────────────
+function dEsc(x){return (x||'').toString().replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+function dFmtDT(v){ if(!v) return '—'; const p=v.split('T'); if(p.length<2) return v; const d=p[0].split('-'); return d[2]+'/'+d[1]+'/'+d[0]+' '+p[1]; }
+function dMpList(){ try{ return [...new Set((state.db.recipes||[]).flatMap(r=>(r.ingredients||[]).map(i=>i.n)))].sort(); }catch(e){ return []; } }
+
+function renderDesidratados(){
+  if(!state.db.desidratados) state.db.desidratados=[];
+  const mps=dMpList();
+  const regs=[...state.db.desidratados].map((r,i)=>({r,i})).reverse();
+  let html=`<div class="card">
+    <div class="card-header"><span class="card-title"><i class="fas fa-wind"></i> Rastreio de desidratados</span></div>
+    <div class="field"><label>Matéria-prima</label>
+      <input type="text" id="d-mp" list="d-mp-list" placeholder="Ex: Orelha suína">
+      <datalist id="d-mp-list">`+mps.map(n=>`<option value="${dEsc(n)}">`).join('')+`</datalist>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Fornecedor</label><input type="text" id="d-forn" placeholder="Fornecedor"></div>
+      <div class="field"><label>Lote do fornecedor</label><input type="text" id="d-lote" placeholder="Lote"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Entrada (data e hora)</label><input type="datetime-local" id="d-ent"></div>
+      <div class="field"><label>Saída (data e hora)</label><input type="datetime-local" id="d-sai"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Temp. entrada (°C)</label><input type="text" inputmode="decimal" id="d-tent" placeholder="60 a 75"></div>
+      <div class="field"><label>Temp. saída (°C)</label><input type="text" inputmode="decimal" id="d-tsai" placeholder="60 a 75"></div>
+    </div>
+    <div class="field" style="margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="d-mast" style="width:auto" onchange="document.getElementById('d-aw-wrap').style.display=this.checked?'block':'none'"> É mastigável? (medir atividade de água)
+      </label>
+    </div>
+    <div class="field" id="d-aw-wrap" style="display:none">
+      <label>Atividade de água (Aw) — alvo ≤ 0,65</label><input type="text" inputmode="decimal" id="d-aw" placeholder="0,60">
+    </div>
+    <div class="field"><label>Observações</label><input type="text" id="d-obs" placeholder="Opcional"></div>
+    <button class="btn btn-primary btn-full" onclick="addDesidratado()"><i class="fas fa-save"></i> Salvar registro</button>
+  </div>
+  <div style="margin:16px 4px 8px;font-weight:700;color:#5a4632">Registros (${state.db.desidratados.length})</div>`;
+  if(!regs.length){
+    html+=`<div class="empty"><i class="fas fa-wind"></i><p>Nenhum desidratado registrado ainda.</p></div>`;
+  } else {
+    html+=regs.map(({r,i})=>`<div class="pkt-section">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div><div class="pkt-name" style="margin:0">${dEsc(r.mp||'—')}</div>
+          <div style="font-size:12px;color:#795548">${dEsc(r.fornecedor||'')}${r.lote?(' · lote '+dEsc(r.lote)):''}</div></div>
+          <button class="btn btn-icon btn-sm btn-danger" onclick="deleteDesidratado(${i})"><i class="fas fa-trash-alt"></i></button>
+        </div>
+        <div style="font-size:12px;color:#5a4632;margin-top:6px;line-height:1.7">
+          Entrada: ${dFmtDT(r.entrada)} &nbsp;·&nbsp; Saída: ${dFmtDT(r.saida)}<br>
+          Temp: ${r.tempEnt||'—'}°C → ${r.tempSai||'—'}°C${r.mastigavel?(' &nbsp;·&nbsp; Aw '+(r.aw||'—')):''}
+          ${r.obs?('<br>Obs: '+dEsc(r.obs)):''}
+        </div>
+      </div>`).join('');
+  }
+  document.getElementById('content').innerHTML=html;
+}
+function addDesidratado(){
+  const g=id=>document.getElementById(id);
+  const mp=g('d-mp').value.trim();
+  if(!mp){ toast('Informe a matéria-prima'); return; }
+  if(!state.db.desidratados) state.db.desidratados=[];
+  state.db.desidratados.push({
+    mp, fornecedor:g('d-forn').value.trim(), lote:g('d-lote').value.trim(),
+    entrada:g('d-ent').value, saida:g('d-sai').value,
+    tempEnt:g('d-tent').value, tempSai:g('d-tsai').value,
+    mastigavel:g('d-mast').checked, aw:g('d-mast').checked?g('d-aw').value:'',
+    obs:g('d-obs').value.trim(), ts:new Date().toISOString()
+  });
+  saveData();
+  toast('✅ Desidratado registrado');
+  renderDesidratados();
+}
+function deleteDesidratado(i){
+  if(!confirm('Apagar este registro de desidratado?')) return;
+  state.db.desidratados.splice(i,1); saveData(); renderDesidratados();
+}
+
 function renderRelatorio(){
   if(!state.relPeriodo) state.relPeriodo={de:todayStr(),ate:todayStr()};
   const html=`<div class="card-title" style="margin-bottom:14px;font-family:'Coolvetica','DM Sans',sans-serif;font-size:18px">Relatório de Produção</div>
