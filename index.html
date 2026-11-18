@@ -229,11 +229,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); bac
     <button class="nav-btn" id="nav-historico" onclick="navigate('historico')">
       <i class="fas fa-history"></i>Histórico
     </button>
-    <button class="nav-btn" id="nav-desidratados" onclick="navigate('desidratados')">
-      <i class="fas fa-wind"></i>Desidratados
-    </button>
-    <button class="nav-btn" id="nav-folhas" onclick="navigate('folhas')">
-      <i class="fas fa-print"></i>Folhas
+    <button class="nav-btn" id="nav-mapa" onclick="navigate('mapa')">
+      <i class="fas fa-clipboard-check"></i>Ficha MAPA
     </button>
     <button class="nav-btn" id="nav-relatorio" onclick="navigate('relatorio')">
       <i class="fas fa-file-invoice"></i>Relatório
@@ -491,8 +488,7 @@ function render() {
   else if (state.page==='receitas') renderReceitas();
   else if (state.page==='petiscos') renderPetiscos();
   else if (state.page==='historico') renderHistorico();
-  else if (state.page==='desidratados') renderDesidratados();
-  else if (state.page==='folhas') renderFolhas();
+  else if (state.page==='mapa') renderMapa();
   else if (state.page==='relatorio') renderRelatorio();
 }
 
@@ -2800,6 +2796,7 @@ function renderHistorico(){
               <span style="font-size:12px;font-weight:700">${fmtDate(date)}</span>
               <span style="font-size:12px;font-weight:700;color:var(--amber);font-family:'DM Mono',monospace">${totalDia.toFixed(2)} kg</span>
             </div>
+            <button class="btn btn-sm btn-full" style="margin:2px 0 7px;border-color:#C0392B;color:#C0392B;font-size:11px;font-weight:700" onclick="fichaPetiscosDia('${date}')"><i class="fas fa-file-pdf"></i>&nbsp; Gerar ficha de rastreabilidade (PDF)</button>
             ${items.map(i=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-top:1px solid var(--border)">
               <span style="font-size:12px">${i.item}</span>
               <div style="display:flex;align-items:center;gap:8px">
@@ -3248,52 +3245,150 @@ function deleteDesidratado(i){
   state.db.desidratados.splice(i,1); saveData(); renderDesidratados();
 }
 
-function folhaHTML(tipo){
-  const D={
-    carnes:{cod:'RE002/POP5-POP9', titulo:'CONTROLE DE TEMPERATURA E RASTREABILIDADE — ALIMENTOS COZIDOS',
-      cols:['Produto PetNaturau','Lote Produto PetNaturau','Matéria-prima','Marca da MP','Lote do fornecedor da MP','Temp. de cozimento','Qtd. embalagens','Observações'],
-      notas:['*O tratamento térmico deve garantir que todos os alimentos atinjam no mínimo 74 °C. O resfriamento deve reduzir de 60 °C a 10 °C em até 2 horas.','Não é necessário medir temperatura de legumes nem de produtos pré-processados.']},
-    desidratados:{cod:'RE003/POP5-POP9', titulo:'CONTROLE DE PROCESSAMENTO E RASTREABILIDADE — ALIMENTOS DESIDRATADOS',
-      cols:['Desidratador','Matéria-prima','Lote do fornecedor da MP','Data/hora entrada','Data/hora saída','Temp. 1ª hora','Temp. última hora','Atividade de água','Produto PetNaturau','Lote PetNaturau','Qtd. embalagens'],
-      notas:['*Temperatura deve ser entre 60 e 75 °C.','**Permanecer até 0,65 Aw — medir apenas em mastigáveis.']},
-    petiscos:{cod:'RE/POP5-POP9', titulo:'CONTROLE DE RASTREABILIDADE — PETISCOS',
-      cols:['Produto PetNaturau','Lote Produto','Matéria-prima','Marca da MP','Lote do fornecedor da MP','Temperatura','Qtd. embalagens','Observações'],
-      notas:[]}
-  };
-  const d=D[tipo]; if(!d) return '';
-  const nrows=18;
-  const th=d.cols.map(c=>'<th>'+c+'</th>').join('');
-  let rows=''; for(let i=0;i<nrows;i++){ rows+='<tr>'+d.cols.map(()=>'<td>&nbsp;</td>').join('')+'</tr>'; }
-  const notas=d.notas.map(n=>'<div class="nota">'+n+'</div>').join('');
-  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>'+d.cod+' — PetNaturau</title>'
-  +'<style>@page{size:A4 landscape;margin:8mm} body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:12px}'
-  +'.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}'
-  +'.hd .t{font-weight:700;font-size:13px;max-width:70%} .hd .c{font-size:11px;text-align:right}'
-  +'table{width:100%;border-collapse:collapse} th,td{border:1px solid #000;font-size:9px;padding:3px 4px;text-align:center} th{background:#e8e8e8} td{height:24px}'
-  +'.nota{font-size:9px;margin-top:5px} .sig{display:flex;justify-content:space-between;margin-top:22px;font-size:10px}'
-  +'.sig div{border-top:1px solid #000;padding-top:4px;width:45%;text-align:center} .pbtn{margin:0 0 10px;padding:9px 16px;font-size:13px;cursor:pointer}'
-  +'@media print{.pbtn{display:none}}</style></head><body>'
+// ====== FICHA DE PRODUÇÃO — ACOMPANHAMENTO DE TEMPERATURA E QUALIDADE (MAPA) ======
+// Estilo idêntico à página 8 do relatório (faixa vermelha + categorias coloridas),
+// porém SÓ a coleta de qualidade: sem composição e sem quantidade a produzir.
+const MAPA_CAT={
+  cru:        {label:'ALIMENTOS CRUS — separar completamente do fluxo de cozimento', fill:'#FDEDEC'},
+  proteina:   {label:'PROTEÍNAS (carnes, vísceras, ovos, laticínios)',               fill:'#FEEBC8'},
+  vegetal:    {label:'VEGETAIS E LEGUMES',                                            fill:'#E8F5E9'},
+  suplemento: {label:'COMPLEMENTOS E SUPLEMENTOS',                                    fill:'#E8F0FE'}
+};
+
+function mapaDoc(cfg){
+  const colg='<col style="width:29%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:13%"><col style="width:14%"><col style="width:11%">';
+  const head='<tr><th>Ingrediente / Matéria-prima</th><th>Preparo</th><th>Total (g)</th><th>Total (kg)</th><th>Marca</th><th>Lote Fornecedor</th><th>Temp °C</th></tr>';
+  let body='';
+  (cfg.sections||[]).forEach(sec=>{
+    if(sec.label) body+='<tr class="cat" style="background:'+(sec.fill||'#eee')+'"><td colspan="7">'+sec.label+'</td></tr>';
+    (sec.rows||[]).forEach(r=>{
+      body+='<tr><td class="l">'+(r.ingrediente||'&nbsp;')+'</td><td>'+(r.preparo||'&nbsp;')+'</td><td>'+(r.g!=null&&r.g!==''?r.g:'&nbsp;')+'</td><td>'+(r.kg!=null&&r.kg!==''?r.kg:'&nbsp;')+'</td><td>'+(r.marca||'&nbsp;')+'</td><td>'+(r.lote||'&nbsp;')+'</td><td>'+(r.temp||'&nbsp;')+'</td></tr>';
+    });
+  });
+  for(let i=0;i<(cfg.blankRows||0);i++){ body+='<tr>'+Array(7).fill('<td>&nbsp;</td>').join('')+'</tr>'; }
+  if(cfg.totalKg!=null){
+    body+='<tr class="total"><td colspan="2">TOTAL GERAL</td><td>'+(cfg.totalG!=null?cfg.totalG+' g':'')+'</td><td>'+cfg.totalKg+' kg</td><td colspan="3"></td></tr>';
+  }
+  const notas=(cfg.notas||[]).map(n=>'<div class="nota">• '+n+'</div>').join('');
+  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>'+(cfg.codigo||'Ficha MAPA')+' — PetNaturau</title>'
+  +'<style>'
+  +'@page{size:A4 landscape;margin:7mm}'
+  +'*{box-sizing:border-box}'
+  +'body{font-family:Arial,Helvetica,sans-serif;color:#1a1d23;margin:0;padding:12px}'
+  +'.pbtn{margin:0 0 12px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;background:#2e7d32;color:#fff;border:none;border-radius:6px}'
+  +'.top{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:7px;border-bottom:2px solid #2e7d32;padding-bottom:6px}'
+  +'.top .b{font-weight:800;font-size:17px;color:#2e7d32;letter-spacing:.5px}'
+  +'.top .c{font-size:9.5px;text-align:right;color:#555;line-height:1.5}'
+  +'.faixa{background:#C0392B;color:#fff;font-weight:800;font-size:12px;letter-spacing:.4px;padding:7px 11px;border-radius:3px 3px 0 0;text-transform:uppercase}'
+  +'.sub{font-size:10.5px;color:#555;margin:5px 0 7px;line-height:1.5}'
+  +'table{width:100%;border-collapse:collapse;table-layout:fixed}'
+  +'th,td{border:1px solid #999;font-size:9px;padding:3px 4px;text-align:center;word-wrap:break-word;overflow:hidden}'
+  +'th{background:#FDDCD7;font-weight:800;color:#1a1d23}'
+  +'td.l{text-align:left} td{height:21px}'
+  +'tr.cat td{font-weight:800;text-align:left;font-size:9px;padding:4px 6px}'
+  +'tr.total td{background:#FDDCD7;font-weight:800}'
+  +'.nota{font-size:8.5px;color:#444;margin-top:3px;line-height:1.45}'
+  +'.meta{display:flex;gap:40px;margin-top:12px;font-size:10.5px;font-weight:600}'
+  +'.sig{display:flex;justify-content:space-between;margin-top:30px;font-size:10px}'
+  +'.sig div{border-top:1px solid #000;padding-top:4px;width:44%;text-align:center}'
+  +'@media print{.pbtn{display:none} body{padding:0}}'
+  +'</style></head><body>'
   +'<button class="pbtn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>'
-  +'<div class="hd"><div class="t">PetNaturau — '+d.titulo+'</div><div class="c">'+d.cod+'<br>Data: ____/____/______</div></div>'
-  +'<table><thead><tr>'+th+'</tr></thead><tbody>'+rows+'</tbody></table>'+notas
-  +'<div class="sig"><div>Responsável pelo preenchimento</div><div>Validação do Responsável Técnico</div></div>'
+  +'<div class="top"><div class="b">PetNaturau</div><div class="c">'+(cfg.codigo||'')+'<br>Aumigo Naturau Alimentos para Pet LTDA · CNPJ 33.210.959/0001-00</div></div>'
+  +'<div class="faixa">'+(cfg.titulo||'')+'</div>'
+  +(cfg.subtitulo?'<div class="sub">'+cfg.subtitulo+'</div>':'<div style="height:5px"></div>')
+  +'<table><colgroup>'+colg+'</colgroup><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'
+  +notas
+  +'<div class="meta"><div>Data de fabricação: '+(cfg.dateFab||'____/____/______')+'</div><div>Lote: '+(cfg.lote||'________________')+'</div></div>'
+  +'<div class="sig"><div>Responsável pelo preenchimento (Renata)</div><div>Validação do Responsável Técnico</div></div>'
   +'</body></html>';
 }
-function imprimirFolha(tipo){
+
+function abrirFicha(html){
   const w=window.open('','_blank');
-  if(!w){ toast('Permita pop-ups pra abrir a folha'); return; }
-  w.document.write(folhaHTML(tipo)); w.document.close(); w.focus();
+  if(!w){ toast('Permita pop-ups pra abrir a ficha'); return; }
+  w.document.write(html); w.document.close(); w.focus();
 }
-function renderFolhas(){
+
+// ── COMIDAS: usa as matérias-primas reais do dia selecionado na aba Produção ──
+function fichaComidasMAPA(){
+  const sel=state.today.selected||{};
+  const mp=(typeof computeMP==='function')?computeMP(sel):[];
+  if(!mp.length){ toast('Selecione as receitas na aba Produção primeiro'); return; }
+  const totalMP=mp.reduce((a,x)=>a+x.total,0);
+  const sections=[]; let cur=null;
+  mp.forEach(e=>{
+    const cat=e.cat||'suplemento';
+    if(!cur||cur._cat!==cat){ const cfg=MAPA_CAT[cat]||MAPA_CAT.suplemento; cur={_cat:cat,label:cfg.label,fill:cfg.fill,rows:[]}; sections.push(cur); }
+    cur.rows.push({ingrediente:e.name, preparo:e.raw?'Cru':'Cozido', g:Math.round(e.total), kg:(e.total/1000).toFixed(3), marca:'', lote:'', temp:e.raw?'—':''});
+  });
+  abrirFicha(mapaDoc({
+    codigo:'RE / POP5–POP9 · Rastreabilidade de comidas',
+    titulo:'Total de matéria-prima — rastreabilidade (comidas)',
+    subtitulo:'Ficha de produção — acompanhamento de temperatura e qualidade (MAPA). Marca, lote e temperatura preenchidos na recepção/produção. (Sem composição nem quantidade a produzir.)',
+    sections, totalG:Math.round(totalMP), totalKg:(totalMP/1000).toFixed(3),
+    dateFab: fmtDate(state.today.date),
+    notas:['Tratamento térmico: atingir no mínimo 74 °C no centro do alimento.','Resfriamento: de 60 °C a 10 °C em até 2 horas.','Legumes e itens pré-processados não exigem medição de temperatura.']
+  }));
+}
+
+// ── PETISCOS / CALDOS / SABORIZANTES / MASTIGÁVEIS: lista de itens, em branco pra preencher ──
+function fichaListaMAPA(tipo){
+  const CFG={
+    petiscos:{itemsKey:'petiscos', titulo:'Rastreabilidade — Petiscos', codigo:'RE / POP5–POP9 · Petiscos', preparo:'',
+      notas:['Registrar marca e lote da matéria-prima recebida (rastreabilidade).','Temperatura de cozimento/desidratação conforme POP do produto.'],
+      defaults:['Petisco de Frango','Petisco de Boi','Petisco de Porco','Petisco Peito de Pato']},
+    mastigaveis:{itemsKey:null, titulo:'Rastreabilidade — Mastigáveis / Desidratados', codigo:'RE003 / POP5–POP9 · Desidratados', preparo:'Desidratado',
+      notas:['Temperatura de desidratação entre 60 °C e 75 °C — anotar 1ª e última hora.','Atividade de água (Aw): permanecer até ≤ 0,65 (medir nos mastigáveis).','Registrar marca e lote da matéria-prima; demais campos preenchidos à caneta na produção.'],
+      defaults:['Orelha suína','Pé de frango desidratado','Moela de frango desidratada','Traqueia bovina','Tendão bovino','Bucho bovino']},
+    saborizantes:{itemsKey:'saborizantes', titulo:'Rastreabilidade — Saborizantes', codigo:'RE / POP5–POP9 · Saborizantes', preparo:'',
+      notas:['Registrar marca e lote da matéria-prima (vísceras) utilizada.','Temperatura de processamento conforme POP.'],
+      defaults:['Saborizante Pulmão de Boi','Saborizante Fígado de Boi','Saborizante Pulmão de Porco','Saborizante Fígado de Pato']},
+    caldos:{itemsKey:'caldos', titulo:'Rastreabilidade — Caldos', codigo:'RE / POP5–POP9 · Caldos', preparo:'',
+      notas:['Caldo de ossos: cocção prolongada — registrar temperatura e tempo.','Registrar marca e lote da matéria-prima recebida.'],
+      defaults:['Caldo de Boi','Caldo de Frango','Caldo de Porco','Caldo de Pato']}
+  };
+  const c=CFG[tipo]; if(!c) return;
+  let items=c.itemsKey ? (state.db.petiscosItems&&state.db.petiscosItems[c.itemsKey]||[]) : [];
+  if(!items.length) items=c.defaults;
+  const rows=items.map(n=>({ingrediente:n, preparo:c.preparo||'', g:'', kg:'', marca:'', lote:'', temp:''}));
+  abrirFicha(mapaDoc({
+    codigo:c.codigo, titulo:c.titulo,
+    subtitulo:'Ficha de produção — acompanhamento de temperatura e qualidade (MAPA). Quantidade, marca, lote e temperatura preenchidos na produção. (Sem composição.)',
+    sections:[{label:'', fill:'', rows}], blankRows:5, notas:c.notas
+  }));
+}
+
+// ── PETISCOS: ficha a partir de um dia já salvo no Histórico (item 1) ──
+function fichaPetiscosDia(date){
+  const items=(state.db.petiscosHistory||[]).filter(p=>p.date===date);
+  if(!items.length){ toast('Sem produção de petiscos nesse dia'); return; }
+  const lbl={petiscos:'Petisco',caldos:'Caldo',saborizantes:'Saborizante',nutrally:'Nutrally'};
+  const rows=items.map(p=>({ingrediente:p.item, preparo:lbl[p.category]||'', g:'', kg:(p.kg!=null?Number(p.kg).toFixed(2):''), marca:'', lote:'', temp:''}));
+  const totalKg=items.reduce((a,p)=>a+(p.kg||0),0);
+  abrirFicha(mapaDoc({
+    codigo:'RE / POP5–POP9 · Petiscos',
+    titulo:'Rastreabilidade — Petiscos & Mastigáveis',
+    subtitulo:'Produção de '+fmtDate(date)+' — marca, lote e temperatura preenchidos pela Renata.',
+    sections:[{label:'', fill:'', rows}], totalKg:totalKg.toFixed(2),
+    dateFab: fmtDate(date),
+    notas:['Registrar marca e lote da matéria-prima recebida (rastreabilidade).','Temperatura conforme POP do produto.']
+  }));
+}
+
+function renderMapa(){
   document.getElementById('content').innerHTML=`
     <div class="card">
-      <div class="card-header"><span class="card-title"><i class="fas fa-print"></i> Folhas de controle (Renata preenche na cozinha)</span></div>
-      <p style="font-size:13px;color:#5a4632;margin:0 0 14px">Gere a folha em branco com os campos de controle de qualidade, imprima e entregue pra cozinha. As receitas vão pelo WhatsApp — aqui é só o controle.</p>
-      <button class="btn btn-primary btn-full" style="margin-bottom:10px" onclick="imprimirFolha('carnes')"><i class="fas fa-drumstick-bite"></i>&nbsp; Folha — Carnes cozidas (sextas)</button>
-      <button class="btn btn-primary btn-full" style="margin-bottom:10px" onclick="imprimirFolha('desidratados')"><i class="fas fa-wind"></i>&nbsp; Folha — Desidratados</button>
-      <button class="btn btn-primary btn-full" onclick="imprimirFolha('petiscos')"><i class="fas fa-bone"></i>&nbsp; Folha — Petiscos</button>
+      <div class="card-header"><span class="card-title"><i class="fas fa-clipboard-check"></i> Ficha de produção para acompanhamento de temperatura e qualidade do MAPA</span></div>
+      <p style="font-size:13px;color:#5a4632;margin:0 0 14px;line-height:1.6">Gera só a folha de coleta (no mesmo estilo da página 8 do relatório): matéria-prima + <strong>temperatura, marca e lote</strong> pra Renata preencher. Sem composição e sem quantidade a produzir. Abre numa aba pra imprimir ou salvar em PDF.</p>
+      <button class="btn btn-primary btn-full" style="margin-bottom:9px" onclick="fichaComidasMAPA()"><i class="fas fa-drumstick-bite"></i>&nbsp; Comidas (do dia selecionado na Produção)</button>
+      <button class="btn btn-primary btn-full" style="margin-bottom:9px" onclick="fichaListaMAPA('petiscos')"><i class="fas fa-bone"></i>&nbsp; Petiscos</button>
+      <button class="btn btn-primary btn-full" style="margin-bottom:9px" onclick="fichaListaMAPA('mastigaveis')"><i class="fas fa-wind"></i>&nbsp; Mastigáveis / Desidratados</button>
+      <button class="btn btn-primary btn-full" style="margin-bottom:9px" onclick="fichaListaMAPA('saborizantes')"><i class="fas fa-tint"></i>&nbsp; Saborizantes</button>
+      <button class="btn btn-primary btn-full" onclick="fichaListaMAPA('caldos')"><i class="fas fa-mug-hot"></i>&nbsp; Caldos</button>
     </div>`;
 }
+
 
 function renderRelatorio(){
   if(!state.relPeriodo) state.relPeriodo={de:todayStr(),ate:todayStr()};
