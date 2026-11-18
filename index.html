@@ -232,6 +232,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); bac
     <button class="nav-btn" id="nav-desidratados" onclick="navigate('desidratados')">
       <i class="fas fa-wind"></i>Desidratados
     </button>
+    <button class="nav-btn" id="nav-folhas" onclick="navigate('folhas')">
+      <i class="fas fa-print"></i>Folhas
+    </button>
     <button class="nav-btn" id="nav-relatorio" onclick="navigate('relatorio')">
       <i class="fas fa-file-invoice"></i>Relatório
     </button>
@@ -489,6 +492,7 @@ function render() {
   else if (state.page==='petiscos') renderPetiscos();
   else if (state.page==='historico') renderHistorico();
   else if (state.page==='desidratados') renderDesidratados();
+  else if (state.page==='folhas') renderFolhas();
   else if (state.page==='relatorio') renderRelatorio();
 }
 
@@ -3168,6 +3172,7 @@ function renderDesidratados(){
   const regs=[...state.db.desidratados].map((r,i)=>({r,i})).reverse();
   let html=`<div class="card">
     <div class="card-header"><span class="card-title"><i class="fas fa-wind"></i> Rastreio de desidratados</span></div>
+    <div class="field"><label>Desidratador</label><input type="text" id="d-desid" placeholder="Qual desidratadora foi usada"></div>
     <div class="field"><label>Matéria-prima</label>
       <input type="text" id="d-mp" list="d-mp-list" placeholder="Ex: Orelha suína">
       <datalist id="d-mp-list">`+mps.map(n=>`<option value="${dEsc(n)}">`).join('')+`</datalist>
@@ -3181,8 +3186,8 @@ function renderDesidratados(){
       <div class="field"><label>Saída (data e hora)</label><input type="datetime-local" id="d-sai"></div>
     </div>
     <div class="row2">
-      <div class="field"><label>Temp. entrada (°C)</label><input type="text" inputmode="decimal" id="d-tent" placeholder="60 a 75"></div>
-      <div class="field"><label>Temp. saída (°C)</label><input type="text" inputmode="decimal" id="d-tsai" placeholder="60 a 75"></div>
+      <div class="field"><label>Temp. 1ª hora (°C)</label><input type="text" inputmode="decimal" id="d-tent" placeholder="60 a 75"></div>
+      <div class="field"><label>Temp. última hora (°C)</label><input type="text" inputmode="decimal" id="d-tsai" placeholder="60 a 75"></div>
     </div>
     <div class="field" style="margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
@@ -3192,6 +3197,11 @@ function renderDesidratados(){
     <div class="field" id="d-aw-wrap" style="display:none">
       <label>Atividade de água (Aw) — alvo ≤ 0,65</label><input type="text" inputmode="decimal" id="d-aw" placeholder="0,60">
     </div>
+    <div class="row2">
+      <div class="field"><label>Produto PetNaturau</label><input type="text" id="d-prod" placeholder="Ex: Orelha desidratada"></div>
+      <div class="field"><label>Lote PetNaturau</label><input type="text" id="d-lotepet" placeholder="Ex: 20261118"></div>
+    </div>
+    <div class="field"><label>Qtd. de embalagens produzidas</label><input type="text" inputmode="decimal" id="d-qtd" placeholder="Ex: 30"></div>
     <div class="field"><label>Observações</label><input type="text" id="d-obs" placeholder="Opcional"></div>
     <button class="btn btn-primary btn-full" onclick="addDesidratado()"><i class="fas fa-save"></i> Salvar registro</button>
   </div>
@@ -3206,8 +3216,9 @@ function renderDesidratados(){
           <button class="btn btn-icon btn-sm btn-danger" onclick="deleteDesidratado(${i})"><i class="fas fa-trash-alt"></i></button>
         </div>
         <div style="font-size:12px;color:#5a4632;margin-top:6px;line-height:1.7">
-          Entrada: ${dFmtDT(r.entrada)} &nbsp;·&nbsp; Saída: ${dFmtDT(r.saida)}<br>
-          Temp: ${r.tempEnt||'—'}°C → ${r.tempSai||'—'}°C${r.mastigavel?(' &nbsp;·&nbsp; Aw '+(r.aw||'—')):''}
+          ${r.desidratador?('Desidratador: '+dEsc(r.desidratador)+'<br>'):''}Entrada: ${dFmtDT(r.entrada)} &nbsp;·&nbsp; Saída: ${dFmtDT(r.saida)}<br>
+          Temp: ${r.tempEnt||'—'}°C → ${r.tempSai||'—'}°C${r.mastigavel?(' &nbsp;·&nbsp; Aw '+(r.aw||'—')):''}<br>
+          ${(r.produtoPet||r.lotePet||r.qtd)?('Produto: '+dEsc(r.produtoPet||'—')+' · Lote '+dEsc(r.lotePet||'—')+' · '+dEsc(r.qtd||'—')+' emb.'):''}
           ${r.obs?('<br>Obs: '+dEsc(r.obs)):''}
         </div>
       </div>`).join('');
@@ -3220,10 +3231,12 @@ function addDesidratado(){
   if(!mp){ toast('Informe a matéria-prima'); return; }
   if(!state.db.desidratados) state.db.desidratados=[];
   state.db.desidratados.push({
+    desidratador:g('d-desid').value.trim(),
     mp, fornecedor:g('d-forn').value.trim(), lote:g('d-lote').value.trim(),
     entrada:g('d-ent').value, saida:g('d-sai').value,
     tempEnt:g('d-tent').value, tempSai:g('d-tsai').value,
     mastigavel:g('d-mast').checked, aw:g('d-mast').checked?g('d-aw').value:'',
+    produtoPet:g('d-prod').value.trim(), lotePet:g('d-lotepet').value.trim(), qtd:g('d-qtd').value.trim(),
     obs:g('d-obs').value.trim(), ts:new Date().toISOString()
   });
   saveData();
@@ -3233,6 +3246,53 @@ function addDesidratado(){
 function deleteDesidratado(i){
   if(!confirm('Apagar este registro de desidratado?')) return;
   state.db.desidratados.splice(i,1); saveData(); renderDesidratados();
+}
+
+function folhaHTML(tipo){
+  const D={
+    carnes:{cod:'RE002/POP5-POP9', titulo:'CONTROLE DE TEMPERATURA E RASTREABILIDADE — ALIMENTOS COZIDOS',
+      cols:['Produto PetNaturau','Lote Produto PetNaturau','Matéria-prima','Marca da MP','Lote do fornecedor da MP','Temp. de cozimento','Qtd. embalagens','Observações'],
+      notas:['*O tratamento térmico deve garantir que todos os alimentos atinjam no mínimo 74 °C. O resfriamento deve reduzir de 60 °C a 10 °C em até 2 horas.','Não é necessário medir temperatura de legumes nem de produtos pré-processados.']},
+    desidratados:{cod:'RE003/POP5-POP9', titulo:'CONTROLE DE PROCESSAMENTO E RASTREABILIDADE — ALIMENTOS DESIDRATADOS',
+      cols:['Desidratador','Matéria-prima','Lote do fornecedor da MP','Data/hora entrada','Data/hora saída','Temp. 1ª hora','Temp. última hora','Atividade de água','Produto PetNaturau','Lote PetNaturau','Qtd. embalagens'],
+      notas:['*Temperatura deve ser entre 60 e 75 °C.','**Permanecer até 0,65 Aw — medir apenas em mastigáveis.']},
+    petiscos:{cod:'RE/POP5-POP9', titulo:'CONTROLE DE RASTREABILIDADE — PETISCOS',
+      cols:['Produto PetNaturau','Lote Produto','Matéria-prima','Marca da MP','Lote do fornecedor da MP','Temperatura','Qtd. embalagens','Observações'],
+      notas:[]}
+  };
+  const d=D[tipo]; if(!d) return '';
+  const nrows=18;
+  const th=d.cols.map(c=>'<th>'+c+'</th>').join('');
+  let rows=''; for(let i=0;i<nrows;i++){ rows+='<tr>'+d.cols.map(()=>'<td>&nbsp;</td>').join('')+'</tr>'; }
+  const notas=d.notas.map(n=>'<div class="nota">'+n+'</div>').join('');
+  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>'+d.cod+' — PetNaturau</title>'
+  +'<style>@page{size:A4 landscape;margin:8mm} body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:12px}'
+  +'.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}'
+  +'.hd .t{font-weight:700;font-size:13px;max-width:70%} .hd .c{font-size:11px;text-align:right}'
+  +'table{width:100%;border-collapse:collapse} th,td{border:1px solid #000;font-size:9px;padding:3px 4px;text-align:center} th{background:#e8e8e8} td{height:24px}'
+  +'.nota{font-size:9px;margin-top:5px} .sig{display:flex;justify-content:space-between;margin-top:22px;font-size:10px}'
+  +'.sig div{border-top:1px solid #000;padding-top:4px;width:45%;text-align:center} .pbtn{margin:0 0 10px;padding:9px 16px;font-size:13px;cursor:pointer}'
+  +'@media print{.pbtn{display:none}}</style></head><body>'
+  +'<button class="pbtn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>'
+  +'<div class="hd"><div class="t">PetNaturau — '+d.titulo+'</div><div class="c">'+d.cod+'<br>Data: ____/____/______</div></div>'
+  +'<table><thead><tr>'+th+'</tr></thead><tbody>'+rows+'</tbody></table>'+notas
+  +'<div class="sig"><div>Responsável pelo preenchimento</div><div>Validação do Responsável Técnico</div></div>'
+  +'</body></html>';
+}
+function imprimirFolha(tipo){
+  const w=window.open('','_blank');
+  if(!w){ toast('Permita pop-ups pra abrir a folha'); return; }
+  w.document.write(folhaHTML(tipo)); w.document.close(); w.focus();
+}
+function renderFolhas(){
+  document.getElementById('content').innerHTML=`
+    <div class="card">
+      <div class="card-header"><span class="card-title"><i class="fas fa-print"></i> Folhas de controle (Renata preenche na cozinha)</span></div>
+      <p style="font-size:13px;color:#5a4632;margin:0 0 14px">Gere a folha em branco com os campos de controle de qualidade, imprima e entregue pra cozinha. As receitas vão pelo WhatsApp — aqui é só o controle.</p>
+      <button class="btn btn-primary btn-full" style="margin-bottom:10px" onclick="imprimirFolha('carnes')"><i class="fas fa-drumstick-bite"></i>&nbsp; Folha — Carnes cozidas (sextas)</button>
+      <button class="btn btn-primary btn-full" style="margin-bottom:10px" onclick="imprimirFolha('desidratados')"><i class="fas fa-wind"></i>&nbsp; Folha — Desidratados</button>
+      <button class="btn btn-primary btn-full" onclick="imprimirFolha('petiscos')"><i class="fas fa-bone"></i>&nbsp; Folha — Petiscos</button>
+    </div>`;
 }
 
 function renderRelatorio(){
