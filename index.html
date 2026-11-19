@@ -451,6 +451,7 @@ function ensureDbShape(){
   if(!state.db.rt) state.db.rt={};
   if(!state.db.assinaturas) state.db.assinaturas={};
   if(!state.db.config) state.db.config={};
+  if(!state.db.auditLog) state.db.auditLog=[];
 }
 
 async function saveData() {
@@ -487,6 +488,7 @@ function navigate(page){ state.page=page; render(); }
 function render() {
   if (!state.db) { renderNoData(); return; }
   renderNav();
+  if (state.role!=='fiscal' && (!getResp() || state.page==='identificacao')) return renderIdentificacao();
   if (state.role==='renata'){
     if (state.page==='comidas') return renderComidasRenata();
     if (state.page==='petiscos') return renderPetiscos();
@@ -504,6 +506,7 @@ function render() {
     const p=state.page||'menu';
     if(p==='fiscalprev') return renderFiscal();
     if(p==='acompanha') return renderAcompanhamento();
+    if(p==='auditoria') return renderAuditLog();
     if(p.indexOf('mon_')===0) return renderMonitor(p.slice(4));
     if(p.indexOf('rt_')===0) return renderRT(p.slice(3));
     return renderFlaviaMenu();
@@ -515,6 +518,7 @@ function render() {
     return renderFiscal();
   }
   if (state.page==='config') return renderConfig();
+  if (state.page==='auditoria') return renderAuditLog();
   if (state.page==='recebimento') return renderRecebimento();
   if (state.page==='receitas') return renderReceitas();
   if (state.page==='petiscos') return renderPetiscos();
@@ -3231,7 +3235,7 @@ function saveReceb(){
     sif:(e.sif||'').trim(), rastreabilidade:(e.rastreabilidade||'').trim(),
     condGeral:e.condGeral||'', quantidade:(e.quantidade||'').toString().trim(),
     obs:(e.obs||'').trim(), fotos:(e.fotos||[]).filter(Boolean), savedAt:new Date().toLocaleString('pt-BR') });
-  saveData(); toast('✅ Recebimento salvo: '+produto);
+  logAudit('recebimento', produto); saveData(); toast('✅ Recebimento salvo: '+produto);
   state.recebEdit=null; render();
 }
 function renderRecebimento(){
@@ -3352,7 +3356,7 @@ function renderRenataMenu(){
     <div style="flex:1"><div style="font-weight:700;font-size:14px">${tit}</div><div style="font-size:10px;color:var(--text-3)">${cod}</div>
     <span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;background:#eef3df;color:#5a7a1e;padding:2px 7px;border-radius:10px">${per}</span></div>
     <i class="fas fa-chevron-right" style="color:var(--text-3)"></i></button>`;
-  let html=modoBanner('Registros do dia a dia');
+  let html=modoBanner('Registros do dia a dia'); html+=respBar();
   html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:6px 0 8px">Produção</div>`;
   html+=card('comidas','fa-utensils','Comidas — temperaturas','RE/POP5-9','A cada produção','#b5cd5a');
   html+=card('petiscos','fa-bone','Petiscos / mastigáveis','RE/POP5-9','A cada produção','#e0a93a');
@@ -3401,7 +3405,7 @@ function saveConduta(){ const e=state.condutaEdit||{itens:{}}; const it=e.itens|
   if(faltam.length){ toast('⚠️ Responda todos os '+CONDUTA_ITENS.length+' itens (faltam '+faltam.length+')'); return; }
   if(!state.db.conduta) state.db.conduta=[];
   state.db.conduta.push({id:'cd'+Date.now(), data:e.data||state.today.date, itens:it, obs:e.obs||'', responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')});
-  saveData(); toast('✅ Conduta registrada'); state.condutaEdit=null; navigate('menu'); }
+  logAudit('conduta do colaborador', fmtD(e.data||state.today.date)); saveData(); toast('✅ Conduta registrada'); state.condutaEdit=null; navigate('menu'); }
 function renderConduta(){
   const e=state.condutaEdit||{itens:{}}; const it=e.itens||{};
   let html=_voltar()+modoBanner('Conduta do colaborador — RE005/POP3 · mensal');
@@ -3429,7 +3433,7 @@ function saveAgua(){ const e=state.aguaEdit||{};
   if(aguaForaPadrao(e).fora && !(e.medidaCorretiva&&(''+e.medidaCorretiva).trim())){ toast('⚠️ Fora do padrão: descreva a medida corretiva'); return; }
   if(!state.db.agua) state.db.agua=[];
   state.db.agua.push(Object.assign({id:'ag'+Date.now(), data:e.data||state.today.date, responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')}, e));
-  saveData(); toast('✅ Análise de água registrada'); state.aguaEdit=null; navigate('menu'); }
+  logAudit('análise de água', 'cloro '+(e.cloro||'—')+' / pH '+(e.ph||'—')); saveData(); toast('✅ Análise de água registrada'); state.aguaEdit=null; navigate('menu'); }
 function renderAgua(){
   const e=state.aguaEdit||{};
   const selOpts=(k,vals)=>`<select onchange="setAgua('${k}',this.value)"><option value=""></option>`+vals.map(x=>`<option value="${x}"${String(e[k])===String(x)?' selected':''}>${x}</option>`).join('')+`</select>`;
@@ -3487,7 +3491,7 @@ function saveTempEquip(){
   const faltam=TEMP_EQUIP_LISTA.filter(eq=>rec[eq]===undefined||rec[eq]==='');
   if(faltam.length){ toast('⚠️ Responda todos: falta '+faltam[0]); return; }
   if(tempForaLimite(rec) && !rec.__gerencia){ toast('⚠️ Temp. acima de -12°C: informe se comunicou a gerência'); return; }
-  saveData(); toast('✅ Temperaturas salvas'); navigate('menu');
+  logAudit('temperatura dos equipamentos', fmtD(d)); saveData(); toast('✅ Temperaturas salvas'); navigate('menu');
 }
 function renderTempEquip(){
   if(!state.tempDate) state.tempDate=state.today.date;
@@ -3528,8 +3532,8 @@ function renderTempEquip(){
 function setManut(k,v){ if(!state.manutEdit) state.manutEdit={}; state.manutEdit[k]=v; }
 function saveManut(){ const e=state.manutEdit||{}; if(!e.equipamento){ toast('⚠️ Informe o equipamento'); return; } if(!state.db.manutencao) state.db.manutencao=[];
   state.db.manutencao.push(Object.assign({id:'mn'+Date.now(), data:e.data||state.today.date, responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')}, e));
-  saveData(); toast('✅ Manutenção registrada'); state.manutEdit=null; render(); }
-function delManut(id){ if(!confirm('Apagar?'))return; state.db.manutencao=(state.db.manutencao||[]).filter(x=>x.id!==id); saveData(); render(); }
+  logAudit('manutenção/quebra', e.equipamento||''); saveData(); toast('✅ Manutenção registrada'); state.manutEdit=null; render(); }
+function delManut(id){ if(!confirm('Apagar?'))return; const m=(state.db.manutencao||[]).find(x=>x.id===id); logAudit('apagou manutenção', (m&&m.equipamento)||id); state.db.manutencao=(state.db.manutencao||[]).filter(x=>x.id!==id); saveData(); render(); }
 function renderManutencao(){
   const e=state.manutEdit||{}; const v=k=>_esc(e[k]);
   let html=_voltar()+modoBanner('Manutenção / quebras — RE001/POP6 · mensal');
@@ -3558,7 +3562,7 @@ function setIsca(k,v){ if(!state.iscaEdit) state.iscaEdit={}; state.iscaEdit[k]=
 function saveIsca(){ const e=state.iscaEdit||{}; if(!state.db.iscas) state.db.iscas=[];
   state.db.iscas.push(Object.assign({id:'is'+Date.now(), data:e.data||state.today.date, responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')}, e));
   saveData(); toast('✅ Isca registrada'); state.iscaEdit=null; render(); }
-function delIsca(id){ if(!confirm('Apagar?'))return; state.db.iscas=(state.db.iscas||[]).filter(x=>x.id!==id); saveData(); render(); }
+function delIsca(id){ if(!confirm('Apagar?'))return; const m=(state.db.iscas||[]).find(x=>x.id===id); logAudit('apagou isca', (m&&m.numIsca)||id); state.db.iscas=(state.db.iscas||[]).filter(x=>x.id!==id); saveData(); render(); }
 function renderPragas(){
   const e=state.pragaEdit||{}, pv=k=>_esc(e[k]); const i=state.iscaEdit||{}, iv=k=>_esc(i[k]);
   let html=_voltar()+modoBanner('Pragas e iscas — RE001/POP7 · a cada ocorrência');
@@ -3604,7 +3608,7 @@ function inventarioItens(){
 function setInv(grupo,item,v){ const d=state.invDate||state.today.date; if(!state.db.inventario) state.db.inventario={}; if(!state.db.inventario[d]) state.db.inventario[d]={}; if(!state.db.inventario[d][grupo]) state.db.inventario[d][grupo]={}; state.db.inventario[d][grupo][item]=v; }
 function setInvDate(v){ state.invDate=v; render(); }
 function addInvOutro(grupo){ const d=state.invDate||state.today.date; const nm=(document.getElementById('inv-outro-'+grupo)||{}).value; if(!nm||!nm.trim()){ toast('Digite o nome do item'); return; } if(!state.db.inventario) state.db.inventario={}; if(!state.db.inventario[d]) state.db.inventario[d]={}; if(!state.db.inventario[d][grupo]) state.db.inventario[d][grupo]={}; if(state.db.inventario[d][grupo][nm.trim()]===undefined) state.db.inventario[d][grupo][nm.trim()]=''; render(); }
-function saveInventario(){ saveData(); toast('✅ Inventário salvo'); navigate('menu'); }
+function saveInventario(){ logAudit('inventário', state.invDate||state.today.date); saveData(); toast('✅ Inventário salvo'); navigate('menu'); }
 function invFoto(input,grupo){
   const f=input.files&&input.files[0]; if(!f) return;
   const d=state.invDate||state.today.date;
@@ -3800,7 +3804,7 @@ function saveRT(key){
   if(first && !((e.vals[first.k]||'')+'').trim()){ toast('⚠️ Preencha: '+first.label); return; }
   if(!state.db.rt) state.db.rt={}; if(!state.db.rt[key]) state.db.rt[key]=[];
   state.db.rt[key].push({ id:'rt'+Date.now(), data:e.data||state.today.date, vals:e.vals||{}, anexos:e.anexos||[], responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR') });
-  saveData(); toast('✅ Registro salvo'); state.rtEdit={vals:{},anexos:[]}; render();
+  logAudit('registro: '+cfg.titulo, (cfg.campos[0]&&e.vals[cfg.campos[0].k])||''); saveData(); toast('✅ Registro salvo'); state.rtEdit={vals:{},anexos:[]}; render();
 }
 function delRTentry(key,id){ if(!confirm('Apagar este registro?')) return; state.db.rt[key]=((state.db.rt||{})[key]||[]).filter(x=>x.id!==id); saveData(); render(); }
 
@@ -3841,7 +3845,9 @@ function renderRT(key){
     const ax=(r.anexos||[]).map(a=> a.t==='image'
         ? `<a href="${a.d}" target="_blank"><img src="${a.d}" style="height:58px;border-radius:5px;margin:4px 4px 0 0"></a>`
         : `<a href="${a.d}" download="${a.n}" style="font-size:11px;display:inline-block;margin:4px 8px 0 0"><i class="fas fa-file-pdf" style="color:#c0392b"></i> ${a.n}</a>`).join('');
-    return `<div class="pkt-section"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:12px;font-weight:700">${fmtD(r.data)}</div><button class="btn btn-icon btn-sm btn-danger" onclick="delRTentry('${key}','${r.id}')"><i class="fas fa-trash-alt"></i></button></div><div style="font-size:12px;color:var(--text-2);margin-top:3px">${resumo||'—'}</div>${ax?('<div>'+ax+'</div>'):''}</div>`;
+    const canc=r.cancelado;
+    const btn = moduloAssinado(key) ? `<span style="font-size:11px;color:#2e7d32"><i class="fas fa-lock"></i> assinado</span>` : (canc?'':`<button class="btn btn-icon btn-sm" style="border-color:#C0392B;color:#C0392B" title="Cancelar" onclick="cancelRTentry('${key}','${r.id}')"><i class="fas fa-ban"></i></button>`);
+    return `<div class="pkt-section" style="${canc?'opacity:.65':''}"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:12px;font-weight:700">${fmtD(r.data)}${canc?' · <span style=\"color:#C0392B\">CANCELADO</span>':''}</div>${btn}</div><div style="font-size:12px;color:var(--text-2);margin-top:3px;${canc?'text-decoration:line-through':''}">${resumo||'—'}</div>${canc?`<div style="font-size:11px;color:#C0392B;margin-top:2px">Cancelado por ${_esc(r.canceladoPor)} em ${_esc(r.canceladoEm)} · motivo: ${_esc(r.motivoCancel)||'—'}</div>`:''}${ax?('<div>'+ax+'</div>'):''}</div>`;
   }).join('');
   document.getElementById('content').innerHTML=html;
 }
@@ -3935,7 +3941,7 @@ function renderFlaviaMenu(){
     ${badge?`<span style="display:inline-block;margin:3px 0 0 5px;font-size:9px;font-weight:700;background:${badge.bg};color:${badge.fg};padding:2px 7px;border-radius:10px">${badge.label}</span>`:''}</div>
     <i class="fas fa-chevron-right" style="color:var(--text-3)"></i></button>`;
   const stOf=(key)=>{ const cfg=RT_MODULOS[key]; if(!cfg||!cfg.periodo) return null; const l=((state.db.rt||{})[key]||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0]; return statusPeriod(l&&l.data,cfg.periodo); };
-  let html=modoBanner('Responsável Técnica — painel');
+  let html=modoBanner('Responsável Técnica — painel'); html+=respBar();
   html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:6px 0 8px">Monitoramento (visualizar)</div>`;
   html+=card('mon_recebimento','fa-truck-ramp-box','Recebimento (Gui)','RE001/POP1','Visualizar','#16a085');
   html+=card('mon_higienizacao','fa-spray-can-sparkles','Higienização','RE001/POP2','Diária','#16a085');
@@ -3963,6 +3969,9 @@ function renderFlaviaMenu(){
   html+=card('rt_recall','fa-rotate-left','Recolhimento / recall','RE005/POP9','A cada ocorrência','#8e44ad');
   html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Fiscalização</div>`;
   html+=card('fiscalprev','fa-clipboard-check','Prévia da fiscalização (MAPA)','Termo de Fiscalização BPF','Ver como o fiscal vê','#37474F');
+  html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Auditoria</div>`;
+  html+=card('auditoria','fa-list-check','Trilha de auditoria','Quem fez o quê, quando','Só leitura','#455a64');
+  html+=`<button class="pkt-section" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;margin-bottom:8px;cursor:pointer" onclick="baixarBackup()"><div style="width:42px;height:42px;border-radius:10px;background:#455a64;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto"><i class="fas fa-download"></i></div><div style="flex:1"><div style="font-weight:700;font-size:14px">Baixar backup dos dados</div><div style="font-size:10px;color:var(--text-3)">Cópia .json datada p/ retenção</div></div><i class="fas fa-chevron-right" style="color:var(--text-3)"></i></button>`;
   document.getElementById('content').innerHTML=html;
 }
 
@@ -3973,9 +3982,9 @@ function assinarRT(chave, rotulo){
   const por=getResp()||'Lorian — CRMV-SP 03686/Z';
   if(!state.db.assinaturas) state.db.assinaturas={};
   state.db.assinaturas[chave]={por:por, data:state.today.date, rotulo:rotulo||chave, ts:new Date().toLocaleString('pt-BR')};
-  saveData(); toast('✅ Assinado como RT'); render();
+  logAudit('assinou como RT', rotulo||chave); saveData(); toast('✅ Assinado como RT'); render();
 }
-function tirarAssinatura(chave){ if(state.db.assinaturas) delete state.db.assinaturas[chave]; saveData(); toast('Assinatura removida'); render(); }
+function tirarAssinatura(chave){ logAudit('removeu assinatura (RT)', chave); if(state.db.assinaturas) delete state.db.assinaturas[chave]; saveData(); toast('Assinatura removida'); render(); }
 function assinaturaHTML(chave){
   const a=(state.db.assinaturas||{})[chave];
   if(!a) return '';
@@ -4118,6 +4127,55 @@ function renderFiscalRTlist(key){
     return `<div class="pkt-section"><div style="font-size:12px;font-weight:700">${fmtD(r.data)}</div><div style="font-size:12px;color:var(--text-2);margin-top:3px">${resumo||'—'}</div>${ax?('<div>'+ax+'</div>'):''}</div>`;
   }).join('');
   document.getElementById('content').innerHTML=html;
+}
+
+/* ============================================================
+   AUDITORIA — identificação, trilha, cancelamento, backup
+   ============================================================ */
+function logAudit(acao, detalhe){
+  if(!state.db) return;
+  if(!state.db.auditLog) state.db.auditLog=[];
+  state.db.auditLog.push({ ts:new Date().toLocaleString('pt-BR'), quem:getResp()||'—', papel:state.role||'—', acao:acao, detalhe:(detalhe==null?'':(''+detalhe)).slice(0,160) });
+  if(state.db.auditLog.length>5000) state.db.auditLog=state.db.auditLog.slice(-5000);
+}
+function respBar(){ const n=getResp(); return `<div style="font-size:11px;color:var(--text-2);margin:-2px 0 10px;text-align:right">Lançando como <b>${_esc(n)||'—'}</b> · <a onclick="navigate('identificacao')" style="color:var(--green-dark);cursor:pointer;text-decoration:underline">trocar</a></div>`; }
+function renderIdentificacao(){
+  const atual=getResp();
+  let html=modoBanner('Identificação');
+  html+=`<div class="card" style="margin-top:10px"><div class="card-title" style="font-size:16px;margin-bottom:6px">Quem é você?</div>
+    <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Seu nome fica junto de cada registro que você lançar — é o que o fiscal usa pra saber quem fez o quê (auditoria).</div>
+    <div class="field"><label>Seu nome</label><input type="text" id="resp-nome" placeholder="Ex: Renata Silva" value="${_esc(atual)}"></div>
+    <button class="btn btn-primary btn-full" onclick="salvarResp()"><i class="fas fa-user-check"></i> Confirmar</button></div>`;
+  document.getElementById('content').innerHTML=html;
+}
+function salvarResp(){ const el=document.getElementById('resp-nome'); const v=(el&&el.value||'').trim(); if(!v){ toast('Digite seu nome'); return; } setResp(v); logAudit('identificou-se', v); if(state.db) saveData(); toast('✅ Olá, '+v+'!'); navigate('menu'); }
+function renderAuditLog(){
+  const log=(state.db.auditLog||[]).slice().reverse();
+  let back = (state.role==='lorian') ? _voltar() : `<button class="btn btn-sm" style="margin-bottom:10px" onclick="navigate('relatorio')"><i class="fas fa-arrow-left"></i> Voltar</button>`;
+  let html=back+modoBanner('Trilha de auditoria');
+  html+=`<div style="font-size:11px;color:var(--text-2);margin-bottom:10px">Tudo que foi lançado, assinado e cancelado — com quem e quando. Só leitura. (${log.length} eventos)</div>`;
+  if(!log.length) html+=`<div style="font-size:12px;color:var(--text-3)">Sem eventos ainda.</div>`;
+  html+=log.slice(0,400).map(e=>`<div class="pkt-section" style="padding:9px 11px"><div style="font-size:12px"><b>${_esc(e.quem)}</b> <span style="font-size:10px;color:var(--text-3)">(${_esc(e.papel)})</span> — ${_esc(e.acao)}</div>${e.detalhe?`<div style="font-size:11px;color:var(--text-2)">${_esc(e.detalhe)}</div>`:''}<div style="font-size:10px;color:var(--text-3)">${_esc(e.ts)}</div></div>`).join('');
+  document.getElementById('content').innerHTML=html;
+}
+function baixarBackup(){
+  try{
+    const data=JSON.stringify(state.db,null,2);
+    const blob=new Blob([data],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    const d=(state.today&&state.today.date)||todayStr();
+    a.download='petnaturau-backup-'+d+'.json'; document.body.appendChild(a); a.click(); a.remove();
+    logAudit('baixou backup', a.download); saveData(); toast('✅ Backup baixado');
+  }catch(e){ toast('⚠️ Erro no backup: '+(e.message||e)); }
+}
+function moduloAssinado(key){ return !!((state.db.assinaturas||{})['rt_'+key]); }
+function cancelRTentry(key,id){
+  if(moduloAssinado(key)){ toast('🔒 Módulo assinado pela RT — não pode alterar'); return; }
+  const e=((state.db.rt||{})[key]||[]).find(x=>x.id===id); if(!e) return;
+  const motivo=prompt('Por que está cancelando este registro?'); if(motivo===null) return;
+  e.cancelado=true; e.motivoCancel=motivo||''; e.canceladoPor=getResp()||'—'; e.canceladoEm=new Date().toLocaleString('pt-BR');
+  logAudit('cancelou registro ('+key+')', 'motivo: '+(motivo||'—'));
+  saveData(); render();
 }
 
 function getModo(){
@@ -4625,6 +4683,7 @@ function gerarPDFcarnes(date){
 function renderRelatorio(){
   if(!state.relPeriodo) state.relPeriodo={de:todayStr(),ate:todayStr()};
   const html=`<div class="card-title" style="margin-bottom:14px;font-family:'Coolvetica','DM Sans',sans-serif;font-size:18px">Relatório de Produção</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn btn-sm" style="flex:1" onclick="navigate('auditoria')"><i class="fas fa-list-check"></i> Auditoria</button><button class="btn btn-sm" style="flex:1" onclick="baixarBackup()"><i class="fas fa-download"></i> Backup</button></div>
     <div class="card">
       <div class="card-header"><span class="card-title"><i class="fas fa-calendar-alt"></i> Selecione o período</span></div>
       <div class="row2">
