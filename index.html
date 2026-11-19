@@ -307,7 +307,8 @@ function defaultDB() {
       petiscos: ['Petisco de Frango','Petisco de Boi','Petisco de Porco','Petisco Peito de Pato','Training Bites Frango','Training Bites Peru'],
       caldos: ['Caldo de Boi','Caldo de Frango','Caldo de Porco','Caldo de Pato'],
       saborizantes: ['Saborizante Pulmão de Boi','Saborizante Fígado de Boi','Saborizante Pulmão de Porco','Saborizante Fígado de Pato'],
-      nutrally: []
+      nutrally: [],
+      mastigaveis: ['Orelha Suína','Pescoço de Pato','Pé de Frango','Casco Bovino']
     }
   };
 }
@@ -418,14 +419,25 @@ async function loadData() {
   _carregarRecebimento();
 }
 
+function _pnorm(s){ return (''+s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+function limpaPetiscosItems(){
+  const pit=state.db.petiscosItems; if(!pit) return;
+  ['petiscos','caldos','saborizantes','nutrally','mastigaveis'].forEach(k=>{ if(!Array.isArray(pit[k])) pit[k]=[]; });
+  const dd=arr=>{ const seen={}, out=[]; (arr||[]).forEach(x=>{ const k=_pnorm(x); if(k && !seen[k]){ seen[k]=1; out.push(x); } }); return out; };
+  pit.petiscos=(pit.petiscos||[]).filter(x=>!/hamburgu|hamb\u00fargu/i.test(x));
+  const moveKeys=[/orelha/i, /pesco[cç]o de pato/i];
+  ['petiscos','nutrally'].forEach(src=>{ (pit[src]||[]).slice().forEach(x=>{ if(moveKeys.some(r=>r.test(x))){ if(!pit.mastigaveis.some(y=>_pnorm(y)===_pnorm(x))) pit.mastigaveis.push(x); pit[src]=pit[src].filter(y=>y!==x); } }); });
+  ['petiscos','caldos','saborizantes','nutrally','mastigaveis'].forEach(k=>{ pit[k]=dd(pit[k]); });
+}
 function ensureDbShape(){
   if(!state.db) return;
   if(!state.db.history) state.db.history=[];
   if(!state.db.petiscosHistory) state.db.petiscosHistory=[];
-  if(!state.db.petiscosItems) state.db.petiscosItems={petiscos:[],caldos:[],saborizantes:[],nutrally:[]};
-  ['petiscos','caldos','saborizantes','nutrally'].forEach(k=>{
+  if(!state.db.petiscosItems) state.db.petiscosItems={petiscos:[],caldos:[],saborizantes:[],nutrally:[],mastigaveis:[]};
+  ['petiscos','caldos','saborizantes','nutrally','mastigaveis'].forEach(k=>{
     if(!state.db.petiscosItems[k]) state.db.petiscosItems[k]=[];
   });
+  limpaPetiscosItems();
   if(!state.db.carnesSexta) state.db.carnesSexta={};
   if(!state.db.recebimentos) state.db.recebimentos=[];
   if(!state.db.higienizacao) state.db.higienizacao={};
@@ -436,6 +448,9 @@ function ensureDbShape(){
   if(!state.db.pragas) state.db.pragas=[];
   if(!state.db.iscas) state.db.iscas=[];
   if(!state.db.inventario) state.db.inventario={};
+  if(!state.db.rt) state.db.rt={};
+  if(!state.db.assinaturas) state.db.assinaturas={};
+  if(!state.db.config) state.db.config={};
 }
 
 async function saveData() {
@@ -488,6 +503,7 @@ function render() {
   if (state.role==='lorian'){
     const p=state.page||'menu';
     if(p==='fiscalprev') return renderFiscal();
+    if(p==='acompanha') return renderAcompanhamento();
     if(p.indexOf('mon_')===0) return renderMonitor(p.slice(4));
     if(p.indexOf('rt_')===0) return renderRT(p.slice(3));
     return renderFlaviaMenu();
@@ -498,6 +514,7 @@ function render() {
     if(p.indexOf('frt_')===0) return renderFiscalRTlist(p.slice(4));
     return renderFiscal();
   }
+  if (state.page==='config') return renderConfig();
   if (state.page==='recebimento') return renderRecebimento();
   if (state.page==='receitas') return renderReceitas();
   if (state.page==='petiscos') return renderPetiscos();
@@ -3085,7 +3102,7 @@ function confirmDeleteHist(id){
 function fillComidaTemps(id){
   const h=(state.db.history||[]).find(x=>x.id===id); if(!h) return;
   const mp=computeMP(h.selected||{});
-  const prot=mp.filter(e=>!e.raw && categorizaIngrediente(normalizeName(e.name))==='proteina');
+  const prot=mp.filter(e=>!e.raw && categorizaIngrediente(normalizeName(e.name))==='proteina' && !/ricota|cottage/i.test(e.name));
   if(!prot.length){ toast('Sem proteínas cozidas pra monitorar nesse dia'); return; }
   if(!h.temps) h.temps={};
   const rows=prot.map(e=>{
@@ -3137,6 +3154,7 @@ function regenarPDFHist(id){
 // ── PETISCOS & MASTIGÁVEIS ──────────────────────────────────
 const PETISCO_TABS=[
   {key:'petiscos',label:'Petiscos',icon:'fa-drumstick-bite',color:'var(--amber)'},
+  {key:'mastigaveis',label:'Mastigáveis',icon:'fa-bone',color:'#8d6e63'},
   {key:'caldos',label:'Caldos',icon:'fa-mug-hot',color:'var(--blue)'},
   {key:'saborizantes',label:'Saborizantes',icon:'fa-tint',color:'var(--green-dark)'},
   {key:'nutrally',label:'Nutrally',icon:'fa-leaf',color:'var(--red)'}
@@ -3167,6 +3185,35 @@ function recebFoto(input, idx){
     const prev=document.getElementById('receb-foto-prev-'+idx); if(prev) prev.innerHTML='<img src="'+data+'" style="max-width:100%;border-radius:8px;margin-top:6px">';
   }; img.src=ev.target.result; };
   rd.readAsDataURL(f);
+}
+function getAICfg(){ return (state.db&&state.db.config&&state.db.config.aiEndpoint)||''; }
+function setAIEndpoint(v){ if(!state.db.config) state.db.config={}; state.db.config.aiEndpoint=(v||'').trim(); saveData(); toast('✅ Endereço da IA salvo'); navigate('recebimento'); }
+async function lerFotosIA(){
+  const url=getAICfg();
+  if(!url){ toast('⚠️ Configure o endereço da IA primeiro'); navigate('config'); return; }
+  const fotos=((state.recebEdit&&state.recebEdit.fotos)||[]).filter(Boolean);
+  if(!fotos.length){ toast('⚠️ Anexe ao menos 1 foto (NF / lote)'); return; }
+  state.aiLoading=true; render();
+  try{
+    const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({tipo:(state.recebEdit.tipo||'mp'),images:fotos})});
+    const txt=await resp.text(); let data; try{data=JSON.parse(txt);}catch(e){ throw new Error('resposta inválida do servidor'); }
+    if(data.error) throw new Error(data.error);
+    const c=data.campos||data; const e=state.recebEdit;
+    ['produto','marca','fornecedor','lote','nf','sif','validade','peso','quantidade','data'].forEach(k=>{ if(c[k]!==undefined&&(''+c[k]).trim()!=='') e[k]=c[k]; });
+    state.aiLoading=false; render();
+    toast('✅ IA preencheu — confira antes de salvar');
+  }catch(err){ state.aiLoading=false; render(); toast('⚠️ Erro na IA: '+(err.message||err)); }
+}
+function renderConfig(){
+  const url=getAICfg();
+  let html=`<button class="btn btn-sm" style="margin-bottom:10px" onclick="navigate('recebimento')"><i class="fas fa-arrow-left"></i> Voltar</button>`;
+  html+=`<div class="card-title" style="margin-bottom:10px;font-size:17px;font-family:'Coolvetica','DM Sans',sans-serif">Configurar IA do recebimento</div>`;
+  html+=`<div class="card"><div style="font-size:12px;color:var(--text-2);margin-bottom:8px">Cole o endereço (URL) do seu "porteiro" (Google Apps Script) que lê as fotos. Enquanto estiver vazio, o botão de IA fica desligado.</div>
+    <div class="field"><label>Endereço da IA (URL)</label><input type="text" id="ai-url" placeholder="https://script.google.com/macros/s/.../exec" value="${(url||'').replace(/"/g,'&quot;')}"></div>
+    <button class="btn btn-primary btn-full" onclick="setAIEndpoint(document.getElementById('ai-url').value)"><i class="fas fa-save"></i> Salvar endereço</button>
+    ${url?`<button class="btn btn-full" style="margin-top:6px" onclick="setAIEndpoint('')">Remover endereço</button>`:''}
+    <div style="font-size:10px;color:var(--text-3);margin-top:8px">A chave da IA fica guardada no Apps Script (nunca no app). O status atual: ${url?'<b style=\"color:#2e7d32\">configurado</b>':'<b style=\"color:#C0392B\">não configurado</b>'}.</div></div>`;
+  document.getElementById('content').innerHTML=html;
 }
 function setRecebTipo(t){ setRecebEdit('tipo',t); render(); }
 function saveReceb(){
@@ -3213,7 +3260,9 @@ function renderRecebimento(){
       <div style="font-size:11px;font-weight:600;margin:8px 0 3px">3) Outra foto (opcional)</div>
       <input type="file" accept="image/*" capture="environment" onchange="recebFoto(this,2)">
       <div id="receb-foto-prev-2">${e.fotos&&e.fotos[2]?`<img src="${e.fotos[2]}" style="max-width:100%;border-radius:8px;margin-top:6px">`:''}</div>
-      <div style="font-size:11px;color:var(--text-2);margin-top:6px"><i class="fas fa-info-circle" style="color:var(--blue)"></i> Suba a foto da NF e do lote/matéria-prima (até 3). A leitura automática por IA é a próxima etapa.</div>
+      <div style="font-size:11px;color:var(--text-2);margin-top:6px"><i class="fas fa-info-circle" style="color:var(--blue)"></i> Suba a foto da NF e do lote/matéria-prima (até 3).</div>
+      <button class="btn btn-full" style="margin-top:8px;background:#6a1b9a;color:#fff;border-color:#6a1b9a" onclick="lerFotosIA()" ${state.aiLoading?'disabled':''}><i class="fas fa-wand-magic-sparkles"></i> ${state.aiLoading?'Lendo as fotos…':'Ler fotos com IA'}</button>
+      <div style="text-align:right;margin-top:4px"><a onclick="navigate('config')" style="font-size:10px;color:var(--text-3);cursor:pointer;text-decoration:underline">⚙️ Configurar IA</a></div>
     </div>
     <div class="field"><label>Produto / Matéria-prima</label>
       <input type="text" list="rb-mplist" placeholder="Ex: Peito de frango" value="${v('produto')}" oninput="setRecebEdit('produto',this.value)">
@@ -3279,10 +3328,10 @@ function delReceb(id){
 }
 // ════════ MÓDULOS DO APP DA RENATA (registros MAPA) ════════
 const HIGIENIZACAO_GRUPOS=[
-  {area:'Entrada da fábrica — Semanal', itens:['Estoque legumes','Escritório','Estoque de matéria-prima','Banheiros']},
-  {area:'Entrada da fábrica — Mensal', itens:['Pallets estoque de legumes']},
-  {area:'Área de produção — De acordo com o uso', itens:['Pisos e ralos','Bancadas','Pias e cubas','Parede da pia','Utensílios','Lixeiras','Fogão 1','Fogão 2','Balança 1','Balança 2','Balança 3','Placas de polietileno']},
-  {area:'Área de produção — Semanal', itens:['Seladora 1','Seladora 2','Seladora 3','Refrigerador 1']}
+  {area:'Área de produção — A cada uso (mais frequente)', itens:['Bancadas','Pias e cubas','Utensílios','Placas de polietileno','Pisos e ralos','Parede da pia','Lixeiras','Fogão 1','Fogão 2','Balança 1','Balança 2','Balança 3']},
+  {area:'Área de produção — Semanal', itens:['Seladora 1','Seladora 2','Seladora 3','Refrigerador 1']},
+  {area:'Entrada da fábrica — Semanal', itens:['Estoque de matéria-prima','Estoque legumes','Escritório','Banheiros']},
+  {area:'Entrada da fábrica — Mensal', itens:['Pallets estoque de legumes']}
 ];
 const CONDUTA_ITENS=['Uniformes completos, limpos e bem conservados','Botas limpas','Aventais limpos e bem conservados','Luvas limpas e bem conservadas','Barbas bem feitas','Cabelos bem protegidos','Unhas limpas, aparadas e sem esmalte','Sem adornos','Higienizam as mãos e antebraços corretamente','Ausência de perfume e maquiagem','Ausência de objetos nos bolsos','Ausência de ferimentos e infecções cutâneas','Não mascam gomas, balas e outros','Hábitos higiênicos: não tossir/espirrar sobre alimentos','Hábitos higiênicos: não levar mãos à boca/nariz','Ingerem alimentos apenas no refeitório','Não sentam/deitam no chão com uniforme','Não fumam nos setores produtivos','Uniformes usados apenas nas dependências'];
 const TEMP_EQUIP_LISTA=['Refrigerador 1','Freezer 1','Freezer 2','Freezer 3','Freezer 4','Freezer 5','Freezer 6','Câmara fria 1'];
@@ -3347,8 +3396,11 @@ function renderHigienizacao(){
 
 // ── RE005/POP3 — CONDUTA (mensal) ──
 function setConduta(k,v){ if(!state.condutaEdit) state.condutaEdit={itens:{}}; if(k==='_obs') state.condutaEdit.obs=v; else if(k==='_data') state.condutaEdit.data=v; else state.condutaEdit.itens[k]=v; }
-function saveConduta(){ const e=state.condutaEdit||{itens:{}}; if(!state.db.conduta) state.db.conduta=[];
-  state.db.conduta.push({id:'cd'+Date.now(), data:e.data||state.today.date, itens:e.itens||{}, obs:e.obs||'', responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')});
+function saveConduta(){ const e=state.condutaEdit||{itens:{}}; const it=e.itens||{};
+  const faltam=CONDUTA_ITENS.filter((_,i)=>!it[i]);
+  if(faltam.length){ toast('⚠️ Responda todos os '+CONDUTA_ITENS.length+' itens (faltam '+faltam.length+')'); return; }
+  if(!state.db.conduta) state.db.conduta=[];
+  state.db.conduta.push({id:'cd'+Date.now(), data:e.data||state.today.date, itens:it, obs:e.obs||'', responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')});
   saveData(); toast('✅ Conduta registrada'); state.condutaEdit=null; navigate('menu'); }
 function renderConduta(){
   const e=state.condutaEdit||{itens:{}}; const it=e.itens||{};
@@ -3368,7 +3420,14 @@ function renderConduta(){
 
 // ── RE001/POP4 — ÁGUA (mensal) — toque em vez de digitar ──
 function setAgua(k,v){ if(!state.aguaEdit) state.aguaEdit={}; state.aguaEdit[k]=v; }
-function saveAgua(){ const e=state.aguaEdit||{}; if(!state.db.agua) state.db.agua=[];
+function aguaForaPadrao(e){ const c=parseFloat((''+(e.cloro||'')).replace(',','.')); const p=parseFloat((''+(e.ph||'')).replace(',','.'));
+  const cloroRuim=!isNaN(c)&&(c<0.2||c>2.0); const phRuim=!isNaN(p)&&(p<6.0||p>9.5); return {cloroRuim,phRuim,fora:cloroRuim||phRuim}; }
+function saveAgua(){ const e=state.aguaEdit||{};
+  const obrig=['pontoColeta','cloro','ph','tampa','reservatorio','higienizacao','microbiologica','filtro'];
+  const falta=obrig.find(k=>!e[k]);
+  if(falta){ toast('⚠️ Responda tudo: falta um campo'); return; }
+  if(aguaForaPadrao(e).fora && !(e.medidaCorretiva&&(''+e.medidaCorretiva).trim())){ toast('⚠️ Fora do padrão: descreva a medida corretiva'); return; }
+  if(!state.db.agua) state.db.agua=[];
   state.db.agua.push(Object.assign({id:'ag'+Date.now(), data:e.data||state.today.date, responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR')}, e));
   saveData(); toast('✅ Análise de água registrada'); state.aguaEdit=null; navigate('menu'); }
 function renderAgua(){
@@ -3386,8 +3445,12 @@ function renderAgua(){
   html+=_tap("Higienização (caixa d'água) realizada?",'higienizacao',e.higienizacao,['Sim','Não'],'setAgua','renderAgua');
   html+=_tap('Análise microbiológica realizada? (anexar laudo)','microbiologica',e.microbiologica,['Sim','Não'],'setAgua','renderAgua');
   html+=_tap('Troca do filtro realizada?','filtro',e.filtro,['Sim','Não'],'setAgua','renderAgua');
+  const fp=aguaForaPadrao(e);
+  if(fp.fora){ html+=`<div style="background:#fdecea;border:1px solid #C0392B;border-radius:8px;padding:9px 11px;margin-top:10px;font-size:12px;color:#922">
+    <b>⚠️ Fora do padrão${fp.cloroRuim?' — cloro (0,2 a 2,0 ppm)':''}${fp.phRuim?' — pH (6,0 a 9,5)':''}.</b> É necessário aplicar medida corretiva.</div>`;
+    html+=`<div class="field" style="margin-top:6px"><label>Medida corretiva aplicada</label><input type="text" value="${_esc(e.medidaCorretiva)}" oninput="setAgua('medidaCorretiva',this.value)"></div>`; }
   html+=`<div class="field" style="margin-top:8px"><label>Observações</label><input type="text" placeholder="Opcional" value="${_esc(e.obs)}" oninput="setAgua('obs',this.value)"></div>
-    <div style="font-size:10px;color:var(--text-3);margin-top:6px">Portaria GM/MS nº 888, de 04/05/2021. Cloro livre entre 0,2 e 5 ppm.</div>
+    <div style="font-size:10px;color:var(--text-3);margin-top:6px">POP4: cloro livre 0,2 a 2,0 ppm · pH 6,0 a 9,5. Todos os campos são obrigatórios.</div>
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveAgua()"><i class="fas fa-save"></i> Salvar análise</button></div>`;
   document.getElementById('content').innerHTML=html;
 }
@@ -3396,20 +3459,67 @@ function renderAgua(){
 function setTemp(eq,v){ const d=state.tempDate||state.today.date; if(!state.db.tempEquip) state.db.tempEquip={}; if(!state.db.tempEquip[d]) state.db.tempEquip[d]={}; state.db.tempEquip[d][eq]=v; }
 function setTempDate(v){ state.tempDate=v; render(); }
 function setTempHora(v){ const d=state.tempDate||state.today.date; if(!state.db.tempEquip) state.db.tempEquip={}; if(!state.db.tempEquip[d]) state.db.tempEquip[d]={}; state.db.tempEquip[d].horario=v; }
-function saveTempEquip(){ saveData(); toast('✅ Temperaturas salvas'); navigate('menu'); }
+function lerTempIA(eq, input){
+  const url=getAICfg(); const f=input.files&&input.files[0]; if(!f) return;
+  if(!url){ toast('⚠️ Configure a IA primeiro (no Recebimento → Configurar IA)'); return; }
+  const rd=new FileReader();
+  rd.onload=ev=>{ const img=new Image(); img.onload=async()=>{
+    const max=1000; let w=img.width,h=img.height; if(w>max||h>max){ if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
+    const c=document.createElement('canvas'); c.width=w;c.height=h; c.getContext('2d').drawImage(img,0,0,w,h);
+    const data=c.toDataURL('image/jpeg',0.6);
+    toast('🔎 Lendo '+eq+'…');
+    try{
+      const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({modo:'temperatura',images:[data]})});
+      const txt=await resp.text(); let d; try{d=JSON.parse(txt);}catch(e){ throw new Error('resposta inválida'); }
+      if(d.error) throw new Error(d.error);
+      let val=(d.valor!==undefined?d.valor:(d.campos&&d.campos.valor));
+      if(val===undefined||val===null||(''+val).trim()===''){ toast('⚠️ Não consegui ler — selecione manual'); return; }
+      val=(''+val).replace(/[^0-9,.-]/g,'').replace(',','.');
+      setTemp(eq, val); render(); toast('✅ '+eq+': '+val+'°C — confira');
+    }catch(err){ toast('⚠️ Erro IA: '+(err.message||err)); }
+  }; img.src=ev.target.result; };
+  rd.readAsDataURL(f);
+}
+function setTempAlerta(k,v){ const d=state.tempDate||state.today.date; if(!state.db.tempEquip) state.db.tempEquip={}; if(!state.db.tempEquip[d]) state.db.tempEquip[d]={}; state.db.tempEquip[d]['__'+k]=v; }
+function tempForaLimite(rec){ return TEMP_EQUIP_LISTA.some(eq=>{ const v=rec[eq]; if(v===undefined||v===''||v==='Em manutenção') return false; const n=parseFloat((''+v).replace(',','.')); return !isNaN(n) && n> -12; }); }
+function saveTempEquip(){
+  const d=state.tempDate||state.today.date; const rec=(state.db.tempEquip&&state.db.tempEquip[d])||{};
+  const faltam=TEMP_EQUIP_LISTA.filter(eq=>rec[eq]===undefined||rec[eq]==='');
+  if(faltam.length){ toast('⚠️ Responda todos: falta '+faltam[0]); return; }
+  if(tempForaLimite(rec) && !rec.__gerencia){ toast('⚠️ Temp. acima de -12°C: informe se comunicou a gerência'); return; }
+  saveData(); toast('✅ Temperaturas salvas'); navigate('menu');
+}
 function renderTempEquip(){
   if(!state.tempDate) state.tempDate=state.today.date;
   const d=state.tempDate; const rec=(state.db.tempEquip&&state.db.tempEquip[d])||{};
-  const tempOpts=(eq)=>{ const neg=/freezer|câmara|camara/i.test(eq); const vals=neg?[-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24]:[0,1,2,3,4,5,6,7,8,9,10];
-    return `<select onchange="setTemp('${eq.replace(/'/g,"\\'")}',this.value)"><option value=""></option>`+vals.map(x=>`<option value="${x}"${String(rec[eq])===String(x)?' selected':''}>${x} °C</option>`).join('')+`</select>`; };
+  const tempOpts=(eq)=>{ const neg=/freezer|câmara|camara/i.test(eq);
+    const vals=neg?[0,-2,-4,-6,-8,-10,-12,-14,-16,-18,-20,-22,-24]:[12,10,8,7,6,5,4,3,2,1,0];
+    const cur=String(rec[eq]===undefined?'':rec[eq]);
+    const alerta=(neg && cur!=='' && cur!=='Em manutenção' && parseFloat(cur.replace(',','.'))> -12);
+    let o=`<select onchange="setTemp('${eq.replace(/'/g,"\\'")}',this.value); render()" style="${alerta?'border:2px solid #C0392B':''}"><option value=""></option>`;
+    o+=`<option value="Em manutenção"${cur==='Em manutenção'?' selected':''}>Em manutenção (desligado)</option>`;
+    if(cur!=='' && cur!=='Em manutenção' && !vals.map(String).includes(cur)) o+=`<option value="${cur}" selected>${cur} °C</option>`;
+    o+=vals.map(x=>`<option value="${x}"${cur===String(x)?' selected':''}>${x} °C</option>`).join('')+`</select>`;
+    return o;
+  };
+  const algumAlerta=tempForaLimite(rec);
   let html=_voltar()+modoBanner('Temperatura dos equipamentos — RE002/POP6 · diária');
   html+=`<div class="card"><div class="row2">
       <div class="field" style="margin-bottom:0"><label>Dia</label><input type="date" value="${d}" onchange="setTempDate(this.value)"></div>
       <div class="field" style="margin-bottom:0"><label>Horário</label><input type="time" value="${_esc(rec.horario)}" oninput="setTempHora(this.value)"></div>
     </div>
-    <div style="font-size:11px;color:var(--text-2);margin:10px 0 4px">Selecione a temperatura de cada equipamento:</div>`;
-  html+=TEMP_EQUIP_LISTA.map(eq=>`<div class="row2" style="align-items:center;margin-top:6px"><div style="font-size:13px;font-weight:600">${eq}</div>${tempOpts(eq)}</div>`).join('');
-  html+=`<div style="font-size:10px;color:var(--text-3);margin-top:8px">Ideais: geladeira máx. 7 °C · freezer até -18 °C.</div>
+    <div style="font-size:11px;color:var(--text-2);margin:10px 0 4px">Freezer/câmara: ideal <b>-12 °C ou mais frio</b>. Acima de -12 °C = atenção. Se o equipamento estiver desligado, marque <b>Em manutenção</b>. Todos são obrigatórios. Toque na <b>câmera</b> p/ ler a temperatura pela foto do visor.</div>`;
+  html+=TEMP_EQUIP_LISTA.map(eq=>{ const neg=/freezer|câmara|camara/i.test(eq); const cur=String(rec[eq]===undefined?'':rec[eq]);
+    const alerta=(neg && cur!=='' && cur!=='Em manutenção' && parseFloat(cur.replace(',','.'))> -12);
+    return `<div class="row2" style="align-items:center;margin-top:6px"><div style="font-size:13px;font-weight:600">${eq}${alerta?' <span style=\"color:#C0392B;font-size:11px\">⚠️ acima de -12°C</span>':''}</div><div style="display:flex;gap:6px;align-items:center">${tempOpts(eq)}<label class="btn btn-sm" style="cursor:pointer;padding:7px 9px" title="Ler por foto"><i class="fas fa-camera"></i><input type="file" accept="image/*" capture="environment" style="display:none" onchange="lerTempIA('${eq.replace(/'/g,"\\'")}',this)"></label></div></div>`;
+  }).join('');
+  if(algumAlerta){
+    html+=`<div style="background:#fdecea;border:1px solid #C0392B;border-radius:8px;padding:9px 11px;margin-top:12px;font-size:12px;color:#922">
+      <b>⚠️ Temperatura acima do limite (-12 °C).</b> Verifique o equipamento. Se continuar alto, comunique a gerência.</div>`;
+    html+=_tap('Gerência comunicada?','__gerencia',rec.__gerencia,['Sim','Não'],'setTempAlerta','renderTempEquip');
+    html+=`<div class="field" style="margin-top:6px"><label>Providência / observação</label><input type="text" value="${_esc(rec.__obsAlerta)}" oninput="setTempAlerta('obsAlerta',this.value)"></div>`;
+  }
+  html+=`<div style="font-size:10px;color:var(--text-3);margin-top:8px">Ideais: geladeira máx. 7 °C · freezer -12 °C ou mais frio (ideal -18 °C).</div>
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveTempEquip()"><i class="fas fa-save"></i> Salvar temperaturas</button></div>`;
   document.getElementById('content').innerHTML=html;
 }
@@ -3476,25 +3586,16 @@ function renderPragas(){
 
 // ── INVENTÁRIO (Renata, toda sexta) — Gui recebe ──
 const INV_CARNES=['Acém bovino','Músculo bovino','Patinho bovino','Lagarto bovino','Lombo bovino','Coração bovino','Fígado bovino','Língua bovina','Filé bovino','Carne bovina moída','Mocotó bovino','Pulmão bovino','Traqueia bovina','Tendão bovino','Bucho bovino','Peito de frango','Sobrecoxa de frango','Coração de frango','Fígado de frango','Moela de frango','Pé de frango','Pernil suíno','Lombo suíno','Pulmão suíno','Orelha suína','Mocotó suíno','Pé de porco','Peito de pato','Moela de pato','Fígado de pato','Pé de pato','Peito de peru','Tilápia','Lambari','Ovo'];
-const INV_LIMPEZA=['Detergente','Cloro'];
+const INV_LIMPEZA=['Detergente','Cloro','Esponja','Papel toalha','Perflex'];
+const INV_SECOS=['Arroz branco','Arroz integral','Aveia','Azeite extra virgem','Banha suína','Cenoura','Cúrcuma','Food Dog Baixo Fósforo','Food Dog Basic','Food Dog Fit Fibras','Food Dog Zero Proteína','Nutroplus Manutenção','Óleo de coco','Óleo de girassol','Óleo de soja','Pimenta preta','Quimtia Premix','Sal'];
 const INV_EMBALAGENS=['Búrguer frango 560g','Búrguer boi 560g','Pote 250g (com tampa)','Pote 500g (com tampa)','Tampa laminada de pote','Embalagem comida 15x20 (200g)','Embalagem comida 16x21 (500g)','Embalagem petisco 70g (pequena)','Embalagem petisco 200g (grande)','Sacola verde','Sacola branca','Sílica (gel)','Sachê metalizado (caldo de ossos)'];
-const INV_ETIQUETAS=['Comida de boi','Comida de frango','Comida de frango crua','Comida de porco','Comida de pato','Comida de peru','Comida crua sem ossos de boi','Caldo de ossos bovino 100g','Caldo de ossos bovino 500g','Caldo de ossos frango 100g','Caldo de ossos frango 500g','Caldo de ossos pato 100g','Caldo de ossos pato 500g','Caldo de ossos porco 100g','Caldo de ossos porco 500g','Casco bovino 30g','Casco P','Casco G','Coração bovino','Fígado bovino','Filé bovino','Lambari','Moela de frango','Moela de pato','Petisco de pato','Etiqueta branca 100x30','Etiqueta branca lisa'];
+const INV_ETIQUETAS=['Comida de boi','Comida de frango','Comida de frango crua','Comida de porco','Comida de pato','Comida de peru','Comida crua sem ossos de boi','Caldo de ossos bovino 100g','Caldo de ossos bovino 500g','Caldo de ossos frango 100g','Caldo de ossos frango 500g','Caldo de ossos pato 100g','Caldo de ossos pato 500g','Caldo de ossos porco 100g','Caldo de ossos porco 500g','Casco bovino 30g','Casco P','Casco G','Coração bovino','Fígado bovino','Filé bovino','Lambari','Moela de frango','Moela de pato','Petisco de pato','Etiqueta branca pequena','Etiqueta branca grande'];
 function _nk(s){ return (''+s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\(.*?\)/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
 function inventarioItens(){
-  // Ingredientes secos: puxa do histórico de receitas, deduplicado e SEM nada de origem animal.
-  const carneKeys=new Set(INV_CARNES.map(_nk));
-  const secoW=['arroz','aveia','premix','quimtia','nutroplus','nutro plus','nutrally','food dog','sal','curcuma','cúrcuma','oleo','óleo','azeite','farinha','ricota','cottage','fibras','fósforo','fosforo','vinagre','banha','psyllium','linhaca','linhaça','chia','gergelim','colageno','colágeno'];
-  const secos={};
-  (state.db.recipes||[]).forEach(r=>(r.ingredients||[]).forEach(x=>{ let n; try{n=normalizeName(x.n);}catch(e){n=x.n;} const low=(''+n).toLowerCase(); const k=_nk(n);
-    if(carneKeys.has(k)) return;
-    let cat='vegetal'; try{cat=categorizaIngrediente(n);}catch(e){}
-    if(cat==='proteina') return;
-    if(secoW.some(w=>low.includes(w)) || cat==='suplemento'){ if(!secos[k]) secos[k]=n; }
-  }));
-  const vals=o=>Object.values(o).sort((a,b)=>(''+a).localeCompare(''+b,'pt'));
+  const s=arr=>arr.slice().sort((a,b)=>a.localeCompare(b,'pt'));
   return [
-    {key:'carnes', label:'Carnes e produtos de origem animal', itens:INV_CARNES.slice().sort((a,b)=>a.localeCompare(b,'pt'))},
-    {key:'secos', label:'Ingredientes secos (suplementos, grãos, temperos)', itens:vals(secos)},
+    {key:'carnes', label:'Carnes e produtos de origem animal', itens:s(INV_CARNES)},
+    {key:'secos', label:'Ingredientes secos (suplementos, grãos, temperos)', itens:s(INV_SECOS)},
     {key:'limpeza', label:'Produtos de limpeza', itens:INV_LIMPEZA},
     {key:'embalagens', label:'Embalagens', itens:INV_EMBALAGENS},
     {key:'etiquetas', label:'Etiquetas', itens:INV_ETIQUETAS}
@@ -3522,27 +3623,37 @@ function invFoto(input,grupo){
   rd.readAsDataURL(f);
 }
 function delInvFoto(grupo,i){ const d=state.invDate||state.today.date; try{ state.db.inventario[d].__fotos[grupo].splice(i,1); }catch(e){} render(); }
+function toggleInvGrupo(k){ if(!state.invOpen) state.invOpen={}; state.invOpen[k]=!state.invOpen[k]; render(); }
 function renderInventario(){
   if(!state.invDate) state.invDate=state.today.date;
+  if(!state.invOpen) state.invOpen={};
   const d=state.invDate; const rec=(state.db.inventario&&state.db.inventario[d])||{};
   let html=_voltar()+modoBanner('Inventário — toda sexta');
-  html+=`<div class="field" style="margin:2px 0 6px"><label>Data do inventário (sexta)</label><input type="date" value="${d}" onchange="setInvDate(this.value)"></div>
-    <div style="font-size:11px;color:var(--text-2);margin-bottom:8px">Informe a quantidade do que TEM em estoque. O Gui recebe pra saber o que comprar. Use "Outros" pra algo que faltar na lista.</div>`;
+  html+=`<div class="field" style="margin:2px 0 6px"><label>Data (sexta)</label><input type="date" value="${d}" onchange="setInvDate(this.value)"></div>
+    <div style="font-size:11px;color:var(--text-2);margin-bottom:10px">Toque no grupo pra abrir e lançar a quantidade. Use "Outros" pra algo fora da lista.</div>`;
   inventarioItens().forEach(g=>{
     const saved=rec[g.key]||{};
-    const itensExtra=Object.keys(saved).filter(it=>!g.itens.includes(it));
-    const todos=g.itens.concat(itensExtra);
-    html+=`<div class="pkt-section"><div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#d35400">${g.label}</div>`;
-    if(!todos.length) html+=`<div style="font-size:11px;color:var(--text-3)">Sem itens cadastrados — adicione em "Outros".</div>`;
-    html+=todos.map(it=>{ const cj=it.replace(/'/g,"\\'"); const gk=g.key;
-      return `<div class="row2" style="align-items:center;margin-top:4px"><div style="font-size:12px">${it}</div>
-        <input type="text" inputmode="decimal" placeholder="qtd" value="${_esc(saved[it])}" oninput="setInv('${gk}','${cj}',this.value)"></div>`;
-    }).join('');
+    const preench=Object.keys(saved).filter(k=>String(saved[k]).trim()!=='').length;
     const fts=(rec.__fotos&&rec.__fotos[g.key])||[];
-    html+=`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)"><label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:4px"><i class="fas fa-camera" style="color:var(--amber)"></i> Fotos do estoque (opcional — tira direto da câmera)</label><input type="file" accept="image/*" capture="environment" onchange="invFoto(this,'${g.key}')">`;
-    html+=fts.map((ft,i)=>`<div style="display:inline-block;position:relative;margin:6px 6px 0 0"><img src="${ft}" style="height:74px;border-radius:6px;display:block"><button class="btn btn-icon btn-sm btn-danger" style="position:absolute;top:-7px;right:-7px;padding:2px 6px" onclick="delInvFoto('${g.key}',${i})"><i class="fas fa-times"></i></button></div>`).join('');
+    const aberto=!!state.invOpen[g.key];
+    html+=`<div class="pkt-section" style="padding:0;overflow:hidden">
+      <button onclick="toggleInvGrupo('${g.key}')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;cursor:pointer;padding:11px 12px">
+        <i class="fas fa-chevron-${aberto?'down':'right'}" style="color:#d35400;font-size:12px"></i>
+        <div style="flex:1;font-weight:700;font-size:13px;color:#d35400">${g.label}</div>
+        <span style="font-size:11px;font-weight:700;color:${preench?'#2e7d32':'var(--text-3)'}">${preench?(preench+' lançado(s)'):'—'}${fts.length?(' · '+fts.length+'📷'):''}</span></button>`;
+    if(aberto){
+      const itensExtra=Object.keys(saved).filter(it=>!g.itens.includes(it)&&it!=='');
+      const todos=g.itens.concat(itensExtra);
+      html+=`<div style="padding:0 12px 12px">`;
+      html+=todos.map(it=>{ const cj=it.replace(/'/g,"\\'");
+        return `<div class="row2" style="align-items:center;margin-top:4px"><div style="font-size:12px">${it}</div>
+          <input type="text" inputmode="decimal" placeholder="qtd" value="${_esc(saved[it])}" oninput="setInv('${g.key}','${cj}',this.value)"></div>`; }).join('');
+      html+=`<div style="display:flex;gap:6px;margin-top:8px"><input type="text" id="inv-outro-${g.key}" placeholder="Outros: nome do item"><button class="btn btn-sm" onclick="addInvOutro('${g.key}')"><i class="fas fa-plus"></i></button></div>`;
+      html+=`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)"><label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:4px"><i class="fas fa-camera" style="color:var(--amber)"></i> Fotos do estoque (opcional)</label><input type="file" accept="image/*" capture="environment" onchange="invFoto(this,'${g.key}')">`;
+      html+=fts.map((ft,i)=>`<div style="display:inline-block;position:relative;margin:6px 6px 0 0"><img src="${ft}" style="height:64px;border-radius:6px;display:block"><button class="btn btn-icon btn-sm btn-danger" style="position:absolute;top:-7px;right:-7px;padding:2px 6px" onclick="delInvFoto('${g.key}',${i})"><i class="fas fa-times"></i></button></div>`).join('');
+      html+=`</div></div>`;
+    }
     html+=`</div>`;
-    html+=`<div style="display:flex;gap:6px;margin-top:8px"><input type="text" id="inv-outro-${g.key}" placeholder="Outros: nome do item"><button class="btn btn-sm" onclick="addInvOutro('${g.key}')"><i class="fas fa-plus"></i></button></div></div>`;
   });
   html+=`<button class="btn btn-primary btn-full" style="margin:12px 0 4px" onclick="saveInventario()"><i class="fas fa-save"></i> Salvar inventário</button>`;
   document.getElementById('content').innerHTML=html;
@@ -3660,13 +3771,26 @@ const RT_MODULOS = {
     anexo:'Relatório anual de logística reversa',
     campos:[ {k:'empresa',label:'Empresa de logística reversa',type:'text'}, {k:'anoRef',label:'Ano de referência',type:'text'},
       {k:'recebido',label:'Relatório recebido?',type:'botoes',opts:['Recebido','Pendente']}, {k:'obs',label:'Observações',type:'textarea'} ] },
-  pop9:{ titulo:'Reclamações, rastreabilidade e recall', cod:'RE004/POP9', pop:'POP 9', per:'A cada ocorrência',
-    ajuda:'Documentar reclamações (SAC), simulação de rastreabilidade, recall e problemas de produção mais graves.',
-    anexo:'Evidências / documentos',
-    campos:[ {k:'tipo',label:'Tipo',type:'botoes',opts:['Reclamação (SAC)','Não conformidade','Teste de rastreabilidade','Recall']},
-      {k:'descricao',label:'Descrição',type:'text'}, {k:'lote',label:'Lote / produto envolvido',type:'text'},
-      {k:'gravidade',label:'Gravidade',type:'botoes',opts:['Baixa','Média','Alta']},
-      {k:'acao',label:'Ação tomada',type:'textarea'}, {k:'status',label:'Status',type:'botoes',opts:['Aberto','Em andamento','Resolvido']} ] }
+  rastreab:{ titulo:'Simulação de rastreabilidade', cod:'RE004/POP9', pop:'POP 9', per:'A cada simulação',
+    ajuda:'Simulação de rastreabilidade do produto acabado até a matéria-prima e os clientes.',
+    anexo:'Planilha / registro da simulação',
+    campos:[ {k:'item',label:'Item da simulação',type:'text'}, {k:'lote',label:'Lote e validade',type:'text'},
+      {k:'qtdEmb',label:'Qtd de embalagens produzidas',type:'text'}, {k:'horaInicio',label:'Horário de início',type:'text'}, {k:'horaFim',label:'Horário de finalização',type:'text'},
+      {k:'mps',label:'Matérias-primas (fornecedor / lote / NF / validade)',type:'textarea'}, {k:'clientes',label:'Clientes que receberam',type:'textarea'},
+      {k:'resultado',label:'Resultado',type:'botoes',opts:['Rastreável','Falha na rastreabilidade']}, {k:'obs',label:'Observações',type:'textarea'} ] },
+  naoConf:{ titulo:'Controle de não conformidades', cod:'RE007/POP9', pop:'POP 9', per:'A cada ocorrência',
+    ajuda:'Registro e ação corretiva das não conformidades.',
+    anexo:'Evidências',
+    campos:[ {k:'numero',label:'Nº da ocorrência',type:'text'}, {k:'area',label:'Área',type:'text'},
+      {k:'descricao',label:'Descrição da não conformidade',type:'textarea'}, {k:'identificador',label:'Responsável pela identificação',type:'text'},
+      {k:'requisito',label:'Requisito afetado',type:'text'}, {k:'acao',label:'Ação corretiva',type:'textarea'},
+      {k:'status',label:'Status',type:'botoes',opts:['Aberto','Em andamento','Resolvido']} ] },
+  recall:{ titulo:'Recolhimento de produto (recall)', cod:'RE005/POP9', pop:'POP 9', per:'A cada ocorrência',
+    ajuda:'Registro de recolhimento de produto (recall).',
+    anexo:'Evidências (NF, contatos, clientes)',
+    campos:[ {k:'produto',label:'Produto recolhido',type:'text'}, {k:'lote',label:'Lote',type:'text'}, {k:'validade',label:'Validade',type:'date'},
+      {k:'naoConf',label:'Não conformidade detectada',type:'textarea'}, {k:'dados',label:'Dados do recolhimento (NF, endereços, clientes)',type:'textarea'},
+      {k:'identificador',label:'Responsável pela identificação',type:'text'}, {k:'status',label:'Status',type:'botoes',opts:['Aberto','Em andamento','Concluído']} ] }
 };
 
 function saveRT(key){
@@ -3821,6 +3945,7 @@ function renderFlaviaMenu(){
   html+=card('mon_pragas','fa-bug','Pragas e iscas','RE001/POP7','Visualizar','#16a085');
   html+=card('mon_manutencao','fa-screwdriver-wrench','Manutenção / quebras','RE001/POP6','Visualizar','#16a085');
   html+=card('mon_producao','fa-temperature-high','Produção (temperaturas)','RE/POP5-9','Visualizar','#16a085');
+  html+=card('acompanha','fa-user-clock','Acompanhamento — Gui/Renata lançaram?','Controle da RT','Diário','#e67e22');
   html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Meus registros (RT)</div>`;
   html+=card('rt_fornecedores','fa-handshake','Qualificação de fornecedores','RE004/POP1','Fornecedores','#8e44ad');
   html+=card('rt_fichasLimpeza','fa-flask','Fichas técnicas de limpeza','RE002/POP2','Produtos de limpeza','#8e44ad');
@@ -3833,7 +3958,9 @@ function renderFlaviaMenu(){
   html+=card('rt_calibracao','fa-ruler-combined','Calibração termômetros/balanças','RE002/POP6','Anual','#8e44ad',stOf('calibracao'));
   html+=card('rt_dedetizacao','fa-bug-slash','Dedetização / desratização','RE/POP7','~4 meses','#8e44ad',stOf('dedetizacao'));
   html+=card('rt_logisticaReversa','fa-recycle','Logística reversa','RE001/POP8','Anual','#8e44ad',stOf('logisticaReversa'));
-  html+=card('rt_pop9','fa-triangle-exclamation','Reclamações / rastreab. / recall','RE004/POP9','A cada ocorrência','#8e44ad');
+  html+=card('rt_rastreab','fa-magnifying-glass-chart','Simulação de rastreabilidade','RE004/POP9','A cada simulação','#8e44ad');
+  html+=card('rt_naoConf','fa-triangle-exclamation','Não conformidades','RE007/POP9','A cada ocorrência','#8e44ad');
+  html+=card('rt_recall','fa-rotate-left','Recolhimento / recall','RE005/POP9','A cada ocorrência','#8e44ad');
   html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Fiscalização</div>`;
   html+=card('fiscalprev','fa-clipboard-check','Prévia da fiscalização (MAPA)','Termo de Fiscalização BPF','Ver como o fiscal vê','#37474F');
   document.getElementById('content').innerHTML=html;
@@ -3843,7 +3970,7 @@ function renderFlaviaMenu(){
    ASSINATURA DA RT (Lorian) + VISÃO DE FISCALIZAÇÃO (MAPA)
    ============================================================ */
 function assinarRT(chave, rotulo){
-  const por=getResp()||'Lorian (RT)';
+  const por=getResp()||'Lorian — CRMV-SP 03686/Z';
   if(!state.db.assinaturas) state.db.assinaturas={};
   state.db.assinaturas[chave]={por:por, data:state.today.date, rotulo:rotulo||chave, ts:new Date().toLocaleString('pt-BR')};
   saveData(); toast('✅ Assinado como RT'); render();
@@ -3912,8 +4039,42 @@ const FISCAL_MAP=[
     {rot:'Logística reversa (RT)', stat:'rt:logisticaReversa', go:'frt_logisticaReversa', sig:'rt_logisticaReversa'} ]},
   {g:'F.9 Rastreabilidade e recolhimento de produtos', itens:[
     {rot:'Recebimento / rastreio FIFO (Gui)', stat:'recebimentos', go:'mon_recebimento', sig:'mon_recebimento'},
-    {rot:'Reclamações / rastreab. / recall (RT)', stat:'rt:pop9', go:'frt_pop9', sig:'rt_pop9'} ]}
+    {rot:'Simulação de rastreabilidade (RT)', stat:'rt:rastreab', go:'frt_rastreab', sig:'rt_rastreab'},
+    {rot:'Não conformidades (RT)', stat:'rt:naoConf', go:'frt_naoConf', sig:'rt_naoConf'},
+    {rot:'Recolhimento / recall (RT)', stat:'rt:recall', go:'frt_recall', sig:'rt_recall'} ]}
 ];
+
+/* ---- ACOMPANHAMENTO (Lorian: Gui/Renata estão lançando?) ---- */
+function _diasAtras(dstr){ if(!dstr) return null; const a=new Date(dstr+'T00:00:00'); const n=new Date((state.today.date||todayStr())+'T00:00:00'); return Math.round((n-a)/86400000); }
+function _lastArr(a){ const d=(a||[]).map(x=>x.data).filter(Boolean).sort(); return d[d.length-1]||''; }
+function _lastTempDia(){ const t=state.db.tempEquip||{}; const d=Object.keys(t).sort(); return d[d.length-1]||''; }
+function _lastInvDia(){ const i=state.db.inventario||{}; const d=Object.keys(i).sort(); return d[d.length-1]||''; }
+function _lastProdDia(){ const h=(state.db.history||[]).filter(x=>x.temps&&Object.keys(x.temps).length).map(x=>x.date).filter(Boolean).sort(); return h[h.length-1]||''; }
+function _lastHigDia(){ const h=state.db.higienizacao||{}; let best=''; Object.keys(h).forEach(mk=>{ Object.values(h[mk]||{}).forEach(dias=>{ (dias||[]).forEach(dd=>{ const dt=mk+'-'+(''+dd).padStart(2,'0'); if(dt>best) best=dt; }); }); }); return best; }
+function renderAcompanhamento(){
+  let html=_voltar()+modoBanner('Acompanhamento — quem está lançando');
+  html+=`<div style="font-size:11px;color:var(--text-2);margin-bottom:10px">Veja se Gui e Renata estão lançando em dia. Diário = esperado todo dia; Sexta = toda semana; Mensal = no mês.</div>`;
+  const itens=[
+    {rot:'Higienização', quem:'Renata', last:_lastHigDia(), lim:2},
+    {rot:'Temperatura dos equipamentos', quem:'Renata', last:_lastTempDia(), lim:2},
+    {rot:'Produção — temperaturas', quem:'Renata', last:_lastProdDia(), lim:4},
+    {rot:'Recebimento', quem:'Gui', last:_lastArr(state.db.recebimentos), lim:10},
+    {rot:'Inventário', quem:'Renata', last:_lastInvDia(), lim:9},
+    {rot:'Conduta do colaborador', quem:'Renata', last:_lastArr(state.db.conduta), lim:35},
+    {rot:'Análise de água', quem:'Renata', last:_lastArr(state.db.agua), lim:35},
+    {rot:'Pragas e iscas', quem:'Renata', last:_lastArr(state.db.pragas), lim:40}
+  ];
+  html+=itens.map(it=>{ const dd=_diasAtras(it.last); let cor,txt;
+    if(dd===null){ cor='#C0392B'; txt='Nunca lançado'; }
+    else if(dd<=it.lim){ cor='#2e7d32'; txt='Em dia · '+(dd===0?'hoje':(dd===1?'ontem':(dd+' dias atrás'))); }
+    else { cor='#C0392B'; txt='Atrasado · '+dd+' dias'; }
+    return `<div class="pkt-section" style="display:flex;align-items:center;gap:10px">
+      <span style="color:${cor};font-size:14px">●</span>
+      <div style="flex:1"><div style="font-weight:600;font-size:13px">${it.rot} <span style="font-size:10px;color:var(--text-3)">(${it.quem})</span></div>
+        <div style="font-size:11px;color:var(--text-2)">${it.last?('último '+fmtD(it.last)+' · '):''}<span style="color:${cor};font-weight:700">${txt}</span></div></div></div>`;
+  }).join('');
+  document.getElementById('content').innerHTML=html;
+}
 
 function renderFiscal(){
   let html='';
