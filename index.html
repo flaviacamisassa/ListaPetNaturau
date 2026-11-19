@@ -427,6 +427,7 @@ function ensureDbShape(){
     if(!state.db.petiscosItems[k]) state.db.petiscosItems[k]=[];
   });
   if(!state.db.carnesSexta) state.db.carnesSexta={};
+  if(!state.db.recebimentos) state.db.recebimentos=[];
 }
 
 async function saveData() {
@@ -469,6 +470,7 @@ function render() {
     if (state.page!=='petiscos') state.page='petiscos';
     return renderPetiscos();
   }
+  if (state.page==='recebimento') return renderRecebimento();
   if (state.page==='receitas') return renderReceitas();
   if (state.page==='petiscos') return renderPetiscos();
   if (state.page==='historico') return renderHistorico();
@@ -1789,7 +1791,7 @@ async function _carregarRecebimento(){
 // FIFO/PEPS: pro nome da matéria-prima, devolve o lote mais antigo com saldo (>0),
 // senão o mais antigo. Vazio se não houver recebimento correspondente.
 function fifoLookup(mpNome){
-  const itens=_fifoCache||[]; if(!itens.length) return {marca:'',lote:''};
+  const itens=((state.db&&state.db.recebimentos)||[]).concat(_fifoCache||[]); if(!itens.length) return {marca:'',lote:''};
   const n=_norm(mpNome); if(!n) return {marca:'',lote:''};
   let cand=itens.filter(x=>{ const p=_norm(x.produto); return p&&(p===n||p.includes(n)||n.includes(p)); });
   if(!cand.length) return {marca:'',lote:''};
@@ -3115,7 +3117,130 @@ const PETISCO_TABS=[
 function getResp(){ try{ return localStorage.getItem('petnaturau-responsavel')||''; }catch(e){ return ''; } }
 function setResp(v){ try{ localStorage.setItem('petnaturau-responsavel',v||''); }catch(e){} }
 
-// ── MODO (Gui / Renata) — separação por link, lembrado no aparelho ──
+// ── RECEBIMENTO DE MATÉRIA-PRIMA (Gui) — alimenta o FIFO direto ──
+function mpSugestoes(){
+  const set=new Set();
+  (state.db.recipes||[]).forEach(r=>(r.ingredients||[]).forEach(i=>{ try{ set.add(normalizeName(i.n)); }catch(e){ set.add(i.n); } }));
+  Object.values(PETISCO_COMP).forEach(c=>(c.mp||[]).forEach(m=>{ if(String(m).toLowerCase().indexOf('vinagre')<0) set.add(m); }));
+  (typeof CARNES_BASE!=='undefined'?CARNES_BASE:[]).forEach(c=>set.add(c));
+  return [...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt'));
+}
+function setRecebEdit(f,val){ if(!state.recebEdit) state.recebEdit={}; state.recebEdit[f]=val; }
+function recebFoto(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{ const img=new Image(); img.onload=()=>{
+    const max=1200; let w=img.width,h=img.height;
+    if(w>max||h>max){ if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
+    const c=document.createElement('canvas'); c.width=w;c.height=h; c.getContext('2d').drawImage(img,0,0,w,h);
+    const data=c.toDataURL('image/jpeg',0.6);
+    if(!state.recebEdit) state.recebEdit={}; state.recebEdit.foto=data;
+    const prev=document.getElementById('receb-foto-prev'); if(prev) prev.innerHTML='<img src="'+data+'" style="max-width:100%;border-radius:8px;margin-top:6px">';
+  }; img.src=ev.target.result; };
+  rd.readAsDataURL(f);
+}
+function setRecebTipo(t){ setRecebEdit('tipo',t); render(); }
+function saveReceb(){
+  const e=state.recebEdit||{};
+  const produto=(e.produto||'').trim();
+  if(!produto){ toast('⚠️ Informe o produto / matéria-prima'); return; }
+  const tipo=e.tipo||'mp';
+  const saldo=(tipo==='emb'?(e.quantidade||''):(e.peso||e.saldo||'')).toString().trim();
+  if(!state.db.recebimentos) state.db.recebimentos=[];
+  state.db.recebimentos.push({ id:'rc'+Date.now()+Math.random().toString(36).slice(2,6),
+    tipo, produto, marca:(e.marca||'').trim(), fornecedor:(e.fornecedor||'').trim(), lote:(e.lote||'').trim(),
+    nf:(e.nf||'').trim(), data:e.data||state.today.date, validade:e.validade||'', saldo,
+    aposProducao:e.aposProducao||'', condVeiculo:e.condVeiculo||'', condMP:e.condMP||'', condEmb:e.condEmb||'',
+    tipoMP:(e.tipoMP||'').trim(), peso:(e.peso||'').toString().trim(), temp:(e.temp||'').toString().trim(),
+    sif:(e.sif||'').trim(), rastreabilidade:(e.rastreabilidade||'').trim(),
+    condGeral:e.condGeral||'', quantidade:(e.quantidade||'').toString().trim(),
+    obs:(e.obs||'').trim(), foto:e.foto||'', savedAt:new Date().toLocaleString('pt-BR') });
+  saveData(); toast('✅ Recebimento salvo: '+produto);
+  state.recebEdit=null; render();
+}
+function renderRecebimento(){
+  if(!state.db.recebimentos) state.db.recebimentos=[];
+  const e=state.recebEdit||{}; const tipo=e.tipo||'mp';
+  const v=k=>(e[k]!==undefined&&e[k]!==null?(''+e[k]).replace(/"/g,'&quot;'):'');
+  const sel=(k,val)=>v(k)===val?' selected':'';
+  const opts15=`<option value=""></option>`+[1,2,3,4,5].map(n=>`<option value="${n}">${n}</option>`).join('');
+  const condSel=k=>`<select onchange="setRecebEdit('${k}',this.value)"><option value=""></option>`+[1,2,3,4,5].map(n=>`<option value="${n}"${sel(k,String(n))}>${n}</option>`).join('')+`</select>`;
+  const dopts=mpSugestoes().map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('');
+  let html=`<div class="card-title" style="margin-bottom:12px;font-size:17px;font-family:'Coolvetica','DM Sans',sans-serif">Recebimento (RE001/POP1)</div>`;
+  html+=`<div class="card">
+    <div class="field" style="margin-bottom:10px"><label>Tipo de recebimento</label>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-full" style="${tipo==='mp'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setRecebTipo('mp')">Matéria-prima</button>
+        <button class="btn btn-full" style="${tipo==='emb'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setRecebTipo('emb')">Embalagem</button>
+      </div>
+    </div>
+    <div class="field"><label>Foto da etiqueta / nota fiscal</label>
+      <input type="file" accept="image/*" capture="environment" onchange="recebFoto(this)">
+      <div id="receb-foto-prev">${e.foto?`<img src="${e.foto}" style="max-width:100%;border-radius:8px;margin-top:6px">`:''}</div>
+      <div style="font-size:11px;color:var(--text-2);margin-top:4px"><i class="fas fa-info-circle" style="color:var(--blue)"></i> Por enquanto o preenchimento é manual — a leitura automática por IA (preencher da foto) é a próxima etapa.</div>
+    </div>
+    <div class="field"><label>Produto / Matéria-prima</label>
+      <input type="text" list="rb-mplist" placeholder="Ex: Peito de frango" value="${v('produto')}" oninput="setRecebEdit('produto',this.value)">
+      <datalist id="rb-mplist">${dopts}</datalist>
+      <div style="font-size:10px;color:var(--text-3);margin-top:3px">Use os nomes da lista pra marca/lote caírem automático na produção.</div>
+    </div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Fornecedor</label><input type="text" placeholder="Ex: Friboi" value="${v('fornecedor')}" oninput="setRecebEdit('fornecedor',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Nota fiscal (NF)</label><input type="text" placeholder="Nº da NF" value="${v('nf')}" oninput="setRecebEdit('nf',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Data do recebimento</label><input type="date" value="${v('data')||state.today.date}" oninput="setRecebEdit('data',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Lote do fornecedor</label><input type="text" placeholder="Ex: ABC123" value="${v('lote')}" oninput="setRecebEdit('lote',this.value)"></div>
+    </div>
+    <div class="field" style="margin-top:8px"><label>Recebimento após a produção?</label>
+      <select onchange="setRecebEdit('aposProducao',this.value)"><option value=""></option><option value="Nao"${sel('aposProducao','Nao')}>Não</option><option value="Sim"${sel('aposProducao','Sim')}>Sim</option></select>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-2);margin:12px 0 4px">QUALIDADE DA ENTREGA (1 = ruim · 5 = ótimo)</div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Veículo</label>${condSel('condVeiculo')}</div>
+      <div class="field" style="margin-bottom:0"><label>Matéria-prima</label>${condSel('condMP')}</div>
+    </div>
+    <div class="field" style="margin-top:8px"><label>Embalagem</label>${condSel('condEmb')}</div>`;
+  if(tipo==='mp'){
+    html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);margin:12px 0 4px">DADOS DA MATÉRIA-PRIMA</div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Marca</label><input type="text" placeholder="Ex: Sadia" value="${v('marca')}" oninput="setRecebEdit('marca',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Tipo de MP</label><input type="text" placeholder="Proteína / Vegetal / Suplemento" value="${v('tipoMP')}" oninput="setRecebEdit('tipoMP',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Peso recebido (kg)</label><input type="text" inputmode="decimal" placeholder="Ex: 30" value="${v('peso')}" oninput="setRecebEdit('peso',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Temperatura (°C)</label><input type="text" inputmode="decimal" placeholder="Ex: 2" value="${v('temp')}" oninput="setRecebEdit('temp',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Validade</label><input type="date" value="${v('validade')}" oninput="setRecebEdit('validade',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>SIF / Registro MAPA</label><input type="text" placeholder="Origem animal/suplemento" value="${v('sif')}" oninput="setRecebEdit('sif',this.value)"></div>
+    </div>
+    <div class="field" style="margin-top:8px"><label>Rastreabilidade</label><input type="text" placeholder="Info de rastreabilidade" value="${v('rastreabilidade')}" oninput="setRecebEdit('rastreabilidade',this.value)"></div>`;
+  } else {
+    html+=`<div style="font-size:11px;font-weight:700;color:var(--text-2);margin:12px 0 4px">DADOS DA EMBALAGEM</div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Condição geral</label><select onchange="setRecebEdit('condGeral',this.value)"><option value=""></option><option value="Conforme"${sel('condGeral','Conforme')}>Conforme</option><option value="Não conforme"${sel('condGeral','Não conforme')}>Não conforme</option></select></div>
+      <div class="field" style="margin-bottom:0"><label>Quantidade</label><input type="text" inputmode="decimal" placeholder="Ex: 500" value="${v('quantidade')}" oninput="setRecebEdit('quantidade',this.value)"></div>
+    </div>`;
+  }
+  html+=`<div class="field" style="margin-top:8px"><label>Observações</label><input type="text" placeholder="Opcional" value="${v('obs')}" oninput="setRecebEdit('obs',this.value)"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="saveReceb()"><i class="fas fa-save"></i> Salvar recebimento</button>
+  </div>`;
+  const recs=[...state.db.recebimentos].reverse().slice(0,25);
+  html+=`<div style="font-weight:700;margin:16px 4px 8px">Últimos recebimentos (${state.db.recebimentos.length})</div>`;
+  if(!recs.length){ html+=`<div class="empty"><i class="fas fa-truck-ramp-box"></i><p>Nenhum recebimento ainda.</p></div>`; }
+  else { html+=recs.map(r=>`<div class="pkt-section">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="pkt-name" style="margin:0">${r.produto} <span class="badge badge-gray" style="font-size:9px">${r.tipo==='emb'?'EMB':'MP'}</span></div>
+      <button class="btn btn-icon btn-sm btn-danger" onclick="delReceb('${r.id}')"><i class="fas fa-trash-alt"></i></button></div>
+      <div style="font-size:12px;color:var(--text-2);margin-top:4px">${r.marca?('Marca '+r.marca+' · '):''}${r.fornecedor||''}${(r.marca||r.fornecedor)?' · ':''}Lote ${r.lote||'—'}${r.nf?(' · NF '+r.nf):''}<br>Receb. ${(r.data||'').split('-').reverse().join('/')}${r.validade?(' · Val. '+(r.validade.split('-').reverse().join('/'))):''}${r.saldo?(' · '+r.saldo+(r.tipo==='emb'?' un':' kg')):''}${r.sif?(' · SIF '+r.sif):''}</div>
+    </div>`).join(''); }
+  document.getElementById('content').innerHTML=html;
+}
+function delReceb(id){
+  if(!confirm('Apagar este recebimento?')) return;
+  state.db.recebimentos=(state.db.recebimentos||[]).filter(r=>r.id!==id);
+  saveData(); render();
+}
 function getModo(){
   try{
     const u=new URLSearchParams(location.search).get('modo');
@@ -3130,8 +3255,8 @@ function modoBanner(sub){
 function renderNav(){
   const nav=document.getElementById('bottom-nav'); if(!nav) return;
   const tabs = state.role==='renata'
-    ? [{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'carnes',i:'fa-drumstick-bite',l:'Carnes'},{p:'comidas',i:'fa-temperature-high',l:'Comidas'}]
-    : [{p:'producao',i:'fa-clipboard-list',l:'Produção'},{p:'receitas',i:'fa-book-open',l:'Receitas'},{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'historico',i:'fa-history',l:'Histórico'},{p:'relatorio',i:'fa-file-invoice',l:'Relatório'}];
+    ? [{p:'comidas',i:'fa-utensils',l:'Comidas'},{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'carnes',i:'fa-drumstick-bite',l:'Carnes'}]
+    : [{p:'recebimento',i:'fa-truck-ramp-box',l:'Receb.'},{p:'producao',i:'fa-clipboard-list',l:'Produção'},{p:'receitas',i:'fa-book-open',l:'Receitas'},{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'historico',i:'fa-history',l:'Histórico'},{p:'relatorio',i:'fa-file-invoice',l:'Relatório'}];
   nav.innerHTML=tabs.map(t=>`<button class="nav-btn ${state.page===t.p?'active':''}" id="nav-${t.p}" onclick="navigate('${t.p}')"><i class="fas ${t.i}"></i>${t.l}</button>`).join('');
 }
 
@@ -3154,18 +3279,35 @@ function renderPetiscosGestao(){
   document.getElementById('content').innerHTML=html;
 }
 
+function pickCarne(c){ state.carneSel=c; render(); }
+function backCarne(){ state.carneSel=null; render(); }
 function renderCarnes(){
   if(!state.carnesDate) state.carnesDate=state.today.date||todayStr();
-  let html=modoBanner('Carnes cozidas na sexta')+`<div class="card">
-    <div class="card-header"><span class="card-title"><i class="fas fa-drumstick-bite"></i> Carnes de sexta</span></div>
-    <div class="field" style="margin-bottom:6px"><label>Data do cozimento</label><input type="date" value="${state.carnesDate}" onchange="setCarnesDate(this.value)"></div>
-    <p style="font-size:11px;color:var(--text-2);margin:0 0 6px">Preencha só as carnes cozidas (temperatura, qtd de embalagens e obs). Marca e lote vêm do recebimento (FIFO). Mín. 74 °C.</p>
-    ${carnesInputsHTML()}
-    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="saveCarnesSexta()"><i class="fas fa-save"></i> Salvar registro</button>
+  const d=state.carnesDate;
+  const sv=(state.db.carnesSexta&&state.db.carnesSexta[d])||{};
+  const esc=v=>(''+(v==null?'':v)).replace(/"/g,'&quot;');
+  let html=modoBanner('Carnes cozidas na sexta');
+  html+=`<div class="field" style="margin:2px 0 10px"><label>Data do cozimento</label><input type="date" value="${d}" onchange="setCarnesDate(this.value)"></div>`;
+  if(!state.carneSel){
+    html+=`<div style="font-weight:700;font-size:14px;margin:4px 0 8px"><i class="fas fa-hand-pointer" style="color:var(--amber)"></i> Toque na carne que cozinhou:</div>`;
+    html+=CARNES_BASE.map(c=>{ const r=sv[c]||{}; const done=!!(r.temp||r.qtd||r.obs); const cj=c.replace(/'/g,"\\'");
+      return `<button class="btn btn-full" style="justify-content:space-between;margin-bottom:6px;text-align:left;padding:13px 14px;${done?'border-color:#2e7d32':''}" onclick="pickCarne('${cj}')"><span style="font-weight:600">${c}</span>${done?'<span style="color:#2e7d32;font-weight:700;font-size:12px">✓</span>':'<i class="fas fa-chevron-right" style="color:var(--text-3)"></i>'}</button>`;
+    }).join('');
+    document.getElementById('content').innerHTML=html; return;
+  }
+  const c=state.carneSel; const r=sv[c]||{}; const fl=fifoLookup(c); const cj=c.replace(/'/g,"\\'");
+  html+=`<button class="btn btn-sm" style="margin-bottom:10px" onclick="backCarne()"><i class="fas fa-arrow-left"></i> Voltar à lista</button>`;
+  html+=`<div class="card"><div class="pkt-name" style="margin:0 0 4px">${c}</div>
+    <div style="font-size:11px;color:var(--text-2);margin-bottom:10px">Marca: ${fl.marca||'—'} &nbsp;·&nbsp; Lote: ${fl.lote||'—'} (FIFO) &nbsp;·&nbsp; Mín. 74 °C</div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Temp. cozimento °C</label><input type="text" inputmode="decimal" placeholder="Ex: 78" value="${esc(r.temp)}" oninput="setCarneField('${cj}','temp',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Qtd. embalagens</label><input type="number" min="0" step="1" placeholder="Ex: 40" value="${esc(r.qtd)}" oninput="setCarneField('${cj}','qtd',this.value)"></div>
+    </div>
+    <div class="field" style="margin-top:8px;margin-bottom:0"><label>Observações</label><input type="text" placeholder="Opcional" value="${esc(r.obs)}" oninput="setCarneField('${cj}','obs',this.value)"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="saveCarnesSexta();backCarne()"><i class="fas fa-save"></i> Salvar</button>
   </div>`;
   document.getElementById('content').innerHTML=html;
 }
-
 function renderComidasRenata(){
   const hist=(state.db.history||[]);
   let html=modoBanner('Temperaturas do cozimento das comidas');
@@ -3183,76 +3325,92 @@ function renderComidasRenata(){
   document.getElementById('content').innerHTML=html;
 }
 
+function allPetiscoProducts(){
+  const map={};
+  (PETISCO_TABS||[]).forEach(t=>(state.db.petiscosItems?.[t.key]||[]).forEach(it=>{ if(it&&!map[it]) map[it]={item:it,category:t.key}; }));
+  Object.keys(PETISCO_COMP).forEach(it=>{ if(!map[it]){ const g=PETISCO_COMP[it].grupo; map[it]={item:it,category:(g==='caldo'?'caldos':g==='saborizante'?'saborizantes':g==='mastigavel'?'mastigaveis':'petiscos')}; } });
+  return Object.values(map);
+}
+function pickPetisco(item,category){
+  state.petiscoSel={item,category};
+  const today=state.today.date;
+  const saved=(state.db.petiscosHistory||[]).find(h=>h.item===item&&h.date===today);
+  state.petiscoEdit=saved?Object.assign({},saved):{date:today};
+  render();
+}
+function backPetisco(){ state.petiscoSel=null; state.petiscoEdit=null; render(); }
+function setPetEdit(f,val){ if(!state.petiscoEdit) state.petiscoEdit={}; state.petiscoEdit[f]=(f==='emb'?(parseInt(val)||0):val); }
+function savePetiscoSel(){
+  const sel=state.petiscoSel||{}; const item=sel.item, category=sel.category; if(!item) return;
+  const comp=PETISCO_COMP[item]||petiscoInfo(item,category);
+  const e=state.petiscoEdit||{};
+  const date=e.date||state.today.date;
+  const emb=parseInt(e.emb)||0;
+  const pesoEmb=parseFloat(String(e.pesoEmb||comp.pesoEmb||'').toString().replace(',','.'))||0;
+  if(!emb||emb<=0||!pesoEmb||pesoEmb<=0){ toast('⚠️ Informe nº de embalagens e gramatura (o que saiu)'); return; }
+  const kg=+(emb*pesoEmb/1000).toFixed(3);
+  const mpCruaKg=parseFloat(String(e.mpCruaKg||'').toString().replace(',','.'))||0;
+  if(!state.db.petiscosHistory) state.db.petiscosHistory=[];
+  state.db.petiscosHistory=state.db.petiscosHistory.filter(p=>!(p.item===item&&p.date===date));
+  state.db.petiscosHistory.push({ id:'p'+Date.now()+Math.random().toString(36).slice(2,6),
+    category, item, date, emb, pesoEmb, kg, mpCruaKg,
+    entrada:e.entrada||'', saida:e.saida||'', tempEnt:e.tempEnt||'', tempSai:e.tempSai||'', aw:e.aw||'',
+    responsavel:getResp()||'', savedAt:new Date().toLocaleString('pt-BR') });
+  saveData();
+  toast('✅ '+item+' registrado');
+  state.petiscoSel=null; state.petiscoEdit=null; render();
+}
+
 function renderPetiscosFill(){
-  if(!state.petiscosTab) state.petiscosTab='petiscos';
-  const tab=state.petiscosTab;
-  const items=state.db.petiscosItems?.[tab]||[];
+  let html=modoBanner('Registrar produção de petiscos');
+  html+=`<div class="field" style="margin:2px 0 10px"><label>Responsável pelo preenchimento</label><input type="text" placeholder="Seu nome (ex: Renata)" value="${(getResp()||'').replace(/"/g,'&quot;')}" oninput="setResp(this.value)"></div>`;
 
-  let html=modoBanner('Registrar produção de petiscos')+`<div class="tabs">`+PETISCO_TABS.map(t=>
-    `<button class="tab-btn ${tab===t.key?'active':''}" onclick="setPetiscosTab('${t.key}')">
-      <i class="fas ${t.icon}" style="font-size:11px;margin-right:3px"></i>${t.label}
-    </button>`).join('')+`</div>`;
-
-  html+=`<div class="field" style="margin:2px 0 10px">
-      <label>Responsável pelo preenchimento</label>
-      <input type="text" placeholder="Seu nome (ex: Renata)" value="${(getResp()||'').replace(/"/g,'&quot;')}" oninput="setResp(this.value)">
-    </div>`;
-
-  if(!items.length){
-    html+=`<div class="empty"><i class="fas fa-box-open"></i><p>Nenhum item cadastrado em ${PETISCO_TABS.find(t=>t.key===tab).label}</p></div>`;
-  } else {
-    html+=items.map((item,idx)=>{
-      const comp=PETISCO_COMP[item]||petiscoInfo(item,tab);
-      const unid=comp.unid||'g';
-      const isMast=(comp.grupo==='mastigavel');
-      const mpNome=(comp.mp&&comp.mp.join(' + '))||item;
-      const t=state.petiscosToday?.[tab]?.[idx]||{};
-      const activeDate=t.date||state.today.date;
-      const saved=(state.db.petiscosHistory||[]).find(p=>p.item===item&&p.category===tab&&p.date===activeDate)||{};
-      const v=k=> (t[k]!==undefined?t[k]:(saved[k]!==undefined&&saved[k]!==null?saved[k]:''));
-      const emb=parseInt(v('emb'))||0, pe=parseFloat(String(v('pesoEmb')||comp.pesoEmb||'').toString().replace(',','.'))||0;
-      const out=emb*pe/1000, mpc=parseFloat(String(v('mpCruaKg')||'').toString().replace(',','.'))||0;
-      const rend=(mpc>0&&out>0)?('Rendimento: '+Math.round(out/mpc*100)+'%  ('+out.toFixed(2)+' kg acabado de '+mpc.toFixed(2)+' kg crua)'):'';
-      const badge=saved.id?'<span style="font-size:10px;color:#2e7d32;font-weight:700;margin-left:6px">✓ registrado</span>':'';
-      return `<div class="pkt-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="pkt-name" style="margin:0">${item}${badge}</div>
-        </div>
-        <div style="font-size:11px;color:var(--text-2);margin-bottom:8px"><b>Matéria-prima:</b> ${mpNome} &nbsp;·&nbsp; Marca/Lote: automático (FIFO do recebimento)</div>
-        <div class="row2">
-          <div class="field" style="margin-bottom:0"><label>Data de produção</label>
-            <input type="date" value="${activeDate}" onchange="setPetiscoField('${tab}',${idx},'date',this.value);renderPetiscos()"></div>
-          <div class="field" style="margin-bottom:0"><label>Matéria-prima crua usada (kg)</label>
-            <input type="text" inputmode="decimal" placeholder="Ex: 10" value="${v('mpCruaKg')}" oninput="setPetiscoField('${tab}',${idx},'mpCruaKg',this.value)"></div>
-        </div>
-        <div class="row2" style="margin-top:8px">
-          <div class="field" style="margin-bottom:0"><label>Nº de embalagens (saíram)</label>
-            <input type="number" min="0" step="1" placeholder="Ex: 30" value="${v('emb')}" oninput="setPetiscoField('${tab}',${idx},'emb',this.value)"></div>
-          <div class="field" style="margin-bottom:0"><label>Gramatura (${unid})</label>
-            <input type="number" min="0" step="1" placeholder="${comp.pesoEmb||'Ex: 100'}" value="${v('pesoEmb')||comp.pesoEmb||''}" oninput="setPetiscoField('${tab}',${idx},'pesoEmb',this.value)"></div>
-        </div>
-        <div class="row2" style="margin-top:8px">
-          <div class="field" style="margin-bottom:0"><label>Entrada (hora)</label>
-            <input type="time" value="${v('entrada')}" oninput="setPetiscoField('${tab}',${idx},'entrada',this.value)"></div>
-          <div class="field" style="margin-bottom:0"><label>Saída (hora)</label>
-            <input type="time" value="${v('saida')}" oninput="setPetiscoField('${tab}',${idx},'saida',this.value)"></div>
-        </div>
-        <div class="row2" style="margin-top:8px">
-          <div class="field" style="margin-bottom:0"><label>Temp. entrada (°C)</label>
-            <input type="text" inputmode="decimal" placeholder="Ex: 65" value="${v('tempEnt')}" oninput="setPetiscoField('${tab}',${idx},'tempEnt',this.value)"></div>
-          <div class="field" style="margin-bottom:0"><label>Temp. saída (°C)</label>
-            <input type="text" inputmode="decimal" placeholder="Ex: 70" value="${v('tempSai')}" oninput="setPetiscoField('${tab}',${idx},'tempSai',this.value)"></div>
-        </div>
-        ${isMast?`<div class="field" style="margin-top:8px;margin-bottom:0"><label>Atividade de água (Aw) — alvo até 0,65</label>
-            <input type="text" inputmode="decimal" placeholder="Ex: 0,60" value="${v('aw')}" oninput="setPetiscoField('${tab}',${idx},'aw',this.value)"></div>`:''}
-        ${rend?`<div style="font-size:11px;color:var(--text-2);margin-top:8px">${rend}</div>`:''}
-        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="savePetiscoEntry('${tab}',${idx})">
-          <i class="fas fa-save"></i> Salvar registro
-        </button>
-      </div>`;
-    }).join('');
+  if(!state.petiscoSel){
+    html+=`<div style="font-weight:700;font-size:14px;margin:4px 0 8px"><i class="fas fa-hand-pointer" style="color:var(--amber)"></i> Toque no produto que você vai registrar:</div>`;
+    const today=state.today.date;
+    const prods=allPetiscoProducts();
+    [['petisco','Petiscos / Desidratados'],['mastigavel','Mastigáveis'],['saborizante','Saborizantes'],['caldo','Caldos']].forEach(([g,label])=>{
+      const list=prods.filter(p=>(PETISCO_COMP[p.item]||petiscoInfo(p.item,p.category)).grupo===g);
+      if(!list.length) return;
+      html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin:12px 0 6px">${label}</div>`;
+      html+=list.map(p=>{
+        const done=(state.db.petiscosHistory||[]).some(h=>h.item===p.item&&h.date===today);
+        const cj=p.item.replace(/'/g,"\\'");
+        return `<button class="btn btn-full" style="justify-content:space-between;margin-bottom:6px;text-align:left;padding:13px 14px;${done?'border-color:#2e7d32':''}" onclick="pickPetisco('${cj}','${p.category}')">
+          <span style="font-weight:600">${p.item}</span>${done?'<span style="color:#2e7d32;font-weight:700;font-size:12px">✓ hoje</span>':'<i class="fas fa-chevron-right" style="color:var(--text-3)"></i>'}</button>`;
+      }).join('');
+    });
+    document.getElementById('content').innerHTML=html;
+    return;
   }
 
+  const item=state.petiscoSel.item, category=state.petiscoSel.category;
+  const comp=PETISCO_COMP[item]||petiscoInfo(item,category);
+  const unid=comp.unid||'g'; const isMast=comp.grupo==='mastigavel';
+  const e=state.petiscoEdit||{}; const v=k=>(e[k]!==undefined&&e[k]!==null?e[k]:'');
+  html+=`<button class="btn btn-sm" style="margin-bottom:10px" onclick="backPetisco()"><i class="fas fa-arrow-left"></i> Voltar à lista</button>`;
+  html+=`<div class="card">
+    <div class="pkt-name" style="margin:0 0 4px">${item}</div>
+    <div style="font-size:11px;color:var(--text-2);margin-bottom:10px"><b>Matéria-prima:</b> ${(comp.mp&&comp.mp.join(' + '))||item} &nbsp;·&nbsp; Marca/Lote: automático (FIFO)</div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Data</label><input type="date" value="${v('date')||state.today.date}" oninput="setPetEdit('date',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>MP crua usada (kg)</label><input type="text" inputmode="decimal" placeholder="Ex: 10" value="${v('mpCruaKg')}" oninput="setPetEdit('mpCruaKg',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Nº embalagens (saíram)</label><input type="number" min="0" step="1" placeholder="Ex: 30" value="${v('emb')}" oninput="setPetEdit('emb',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Gramatura (${unid})</label><input type="number" min="0" step="1" placeholder="${comp.pesoEmb||'Ex: 100'}" value="${v('pesoEmb')||comp.pesoEmb||''}" oninput="setPetEdit('pesoEmb',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Entrada (hora)</label><input type="time" value="${v('entrada')}" oninput="setPetEdit('entrada',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Saída (hora)</label><input type="time" value="${v('saida')}" oninput="setPetEdit('saida',this.value)"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field" style="margin-bottom:0"><label>Temp. entrada (°C)</label><input type="text" inputmode="decimal" placeholder="Ex: 65" value="${v('tempEnt')}" oninput="setPetEdit('tempEnt',this.value)"></div>
+      <div class="field" style="margin-bottom:0"><label>Temp. saída (°C)</label><input type="text" inputmode="decimal" placeholder="Ex: 70" value="${v('tempSai')}" oninput="setPetEdit('tempSai',this.value)"></div>
+    </div>
+    ${isMast?`<div class="field" style="margin-top:8px;margin-bottom:0"><label>Atividade de água (Aw) — alvo até 0,65</label><input type="text" inputmode="decimal" placeholder="Ex: 0,60" value="${v('aw')}" oninput="setPetEdit('aw',this.value)"></div>`:''}
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="savePetiscoSel()"><i class="fas fa-save"></i> Salvar registro</button>
+  </div>`;
   document.getElementById('content').innerHTML=html;
 }
 
@@ -3813,7 +3971,7 @@ function gerarRelatorioPeriodo(){
 
 // ── INIT ──────────────────────────────────────────────────
 state.role = getModo();
-state.page = (state.role==='renata') ? 'petiscos' : 'producao';
+state.page = (state.role==='renata') ? 'comidas' : 'producao';
 const gotToken = checkAuthCallback();
 if (gotToken) {
   loadData();
