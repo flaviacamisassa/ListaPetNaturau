@@ -3286,9 +3286,9 @@ const PETISCO_COMP={
   'Saborizante Pulmão de Porco':{grupo:'saborizante',mp:['Pulmão suíno'],unid:'g',pesoEmb:0},
   'Saborizante Fígado de Pato':{grupo:'saborizante',mp:['Fígado de pato'],unid:'g',pesoEmb:0},
   'Caldo de Boi':{grupo:'caldo',mp:['Mocotó bovino','Vinagre de maçã'],unid:'ml',pesoEmb:300},
-  'Caldo de Frango':{grupo:'caldo',mp:['Ossos de frango','Vinagre de maçã'],unid:'ml',pesoEmb:300},
-  'Caldo de Porco':{grupo:'caldo',mp:['Ossos suínos','Vinagre de maçã'],unid:'ml',pesoEmb:300},
-  'Caldo de Pato':{grupo:'caldo',mp:['Ossos de pato','Vinagre de maçã'],unid:'ml',pesoEmb:300}
+  'Caldo de Frango':{grupo:'caldo',mp:['Pé de frango','Vinagre de maçã'],unid:'ml',pesoEmb:300},
+  'Caldo de Porco':{grupo:'caldo',mp:['Mocotó suíno','Vinagre de maçã'],unid:'ml',pesoEmb:300},
+  'Caldo de Pato':{grupo:'caldo',mp:['Pé de pato','Vinagre de maçã'],unid:'ml',pesoEmb:300}
 };
 // Desidratados rendem ~30% -> matéria-prima crua = produzido / rendimento
 const PETISCO_YIELD=0.30;
@@ -3323,23 +3323,50 @@ function _secTitle(doc,y,title,color){
   return y+7;
 }
 // última página — rastreabilidade (vermelho), pra Renata preencher
-function _rastreabilidadePage(doc,mpRows,dateFab,lote,nota){
+function _rastreabilidadePage(doc,produtos,dateFab,lote){
   doc.addPage(); _pdfHead(doc,'Rastreabilidade','',dateFab,lote);
   let y=29;
-  y=_secTitle(doc,y,'RASTREABILIDADE — PREENCHER NA PRODUÇÃO (RENATA)',[192,57,43]);
+  y=_secTitle(doc,y,'RASTREABILIDADE E CONTROLE DE PROCESSO — PREENCHER NA PRODUÇÃO (RENATA)',[192,57,43]);
+  const GRP_FILL={petisco:[238,244,208],mastigavel:[232,240,254],saborizante:[232,245,233],caldo:[254,235,200]};
+  const body=[];
+  (produtos||[]).forEach(p=>{
+    const fill=GRP_FILL[p.grupo]||[240,240,240];
+    const titulo=p.produto+(p.grupo==='caldo'?'   (ingredientes do mesmo produto — um só processo)':'');
+    body.push([{content:titulo,colSpan:8,styles:{fillColor:fill,fontStyle:'bold',textColor:[26,29,35],halign:'left'}}]);
+    const mps=(p.mp&&p.mp.length)?p.mp:[p.produto];
+    const isMast=p.grupo==='mastigavel';
+    const aw=isMast?'':'—';
+    if(mps.length>1){
+      mps.forEach((m,i)=>{
+        const fl=fifoLookup(m);
+        if(i===0){
+          body.push([m,fl.marca,fl.lote,
+            {content:'',rowSpan:mps.length},{content:'',rowSpan:mps.length},
+            {content:'',rowSpan:mps.length},{content:'',rowSpan:mps.length},
+            {content:aw,rowSpan:mps.length,styles:{halign:'center'}}]);
+        } else { body.push([m,fl.marca,fl.lote]); }
+      });
+    } else {
+      const m=mps[0]; const fl=fifoLookup(m);
+      body.push([m,fl.marca,fl.lote,'','','','',{content:aw,styles:{halign:'center'}}]);
+    }
+  });
   doc.autoTable({startY:y,
-    head:[['Matéria-prima','Marca','Lote do fornecedor','Temp. °C','Qtd.']],
-    body:mpRows.map(m=>{const _fl=fifoLookup(m);return [m,_fl.marca,_fl.lote,'',''];}),
-    styles:{fontSize:9,cellPadding:3,minCellHeight:10,textColor:[26,29,35],lineColor:[150,150,150],lineWidth:0.1},
-    headStyles:{fillColor:[253,220,215],textColor:[26,29,35],fontStyle:'bold'},
-    columnStyles:{0:{cellWidth:62},1:{cellWidth:38},2:{cellWidth:44},3:{cellWidth:22},4:{cellWidth:24}},
+    head:[['Matéria-prima','Marca','Lote do fornecedor','Entrada (h)','Saída (h)','Temp. ent. °C','Temp. saí. °C','Aw']],
+    body,
+    styles:{fontSize:7,cellPadding:2,minCellHeight:9,textColor:[26,29,35],lineColor:[150,150,150],lineWidth:0.1,valign:'middle'},
+    headStyles:{fillColor:[253,220,215],textColor:[26,29,35],fontStyle:'bold',fontSize:6.6,halign:'center'},
+    columnStyles:{0:{cellWidth:40},1:{cellWidth:24},2:{cellWidth:28},3:{cellWidth:16},4:{cellWidth:16},5:{cellWidth:18},6:{cellWidth:18},7:{cellWidth:14,halign:'center'}},
     margin:{left:10,right:10}
   });
-  let yy=doc.lastAutoTable.finalY+7;
-  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
-  doc.text('Marca e Lote do fornecedor serão preenchidos automaticamente quando a planilha de recebimento estiver integrada.',10,yy); yy+=4.5;
-  if(nota){ doc.text(nota,10,yy); yy+=4.5; }
-  yy+=5;
+  let yy=doc.lastAutoTable.finalY+6;
+  if(yy>275){ doc.addPage(); yy=20; }
+  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(192,57,43);
+  doc.text('Marca e Lote do fornecedor: preenchidos automaticamente por FIFO (PEPS) quando o recebimento estiver integrado.',10,yy); yy+=5;
+  doc.setTextColor(26,29,35); doc.setFont('helvetica','normal'); doc.setFontSize(6.6);
+  const notas=['Desidratados (petiscos, mastigáveis, saborizantes): anotar horário de entrada/saída e temperatura de entrada/saída do desidratador.','Atividade de água (Aw): medir apenas nos mastigáveis — alvo ate 0,65.','Caldos: cocção prolongada com vinagre de maçã — os dois ingredientes são do mesmo produto, logo um só horário e uma só temperatura.'];
+  notas.forEach(n=>{ const ls=doc.splitTextToSize('• '+n,190); doc.text(ls,10,yy); yy+=ls.length*3.2; });
+  yy+=6;
   doc.line(10,yy,86,yy); doc.line(120,yy,200,yy); yy+=4;
   doc.setFontSize(6.5);
   doc.text('Responsável pelo preenchimento (Renata)',10,yy);
@@ -3384,7 +3411,9 @@ function gerarPDFpetiscos(date){
     });
     y=doc.lastAutoTable.finalY+6;
   });
-  _rastreabilidadePage(doc,[...mpSet],dateFab,lote,'Caldos: cocção prolongada + vinagre de maçã. Mastigáveis: medir atividade de água (Aw ≤ 0,65).');
+  const prodList=[];
+  ['petisco','mastigavel','saborizante','caldo'].forEach(g=>{ (grupos[g]||[]).forEach(p=>prodList.push({produto:p.item,grupo:g,mp:(p.info&&p.info.mp)||[]})); });
+  _rastreabilidadePage(doc,prodList,dateFab,lote);
   doc.save(`petnaturau-petiscos-${(dateFab||'').replace(/\//g,'-')}.pdf`);
   toast('📄 PDF de petiscos gerado!');
 }
