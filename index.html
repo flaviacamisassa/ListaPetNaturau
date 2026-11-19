@@ -216,23 +216,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); bac
 
   <div class="content" id="content"></div>
 
-  <nav class="bottom-nav">
-    <button class="nav-btn active" id="nav-producao" onclick="navigate('producao')">
-      <i class="fas fa-clipboard-list"></i>Produção
-    </button>
-    <button class="nav-btn" id="nav-receitas" onclick="navigate('receitas')">
-      <i class="fas fa-book-open"></i>Receitas
-    </button>
-    <button class="nav-btn" id="nav-petiscos" onclick="navigate('petiscos')">
-      <i class="fas fa-bone"></i>Petiscos
-    </button>
-    <button class="nav-btn" id="nav-historico" onclick="navigate('historico')">
-      <i class="fas fa-history"></i>Histórico
-    </button>
-    <button class="nav-btn" id="nav-relatorio" onclick="navigate('relatorio')">
-      <i class="fas fa-file-invoice"></i>Relatório
-    </button>
-  </nav>
+  <nav class="bottom-nav" id="bottom-nav"></nav>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -474,20 +458,22 @@ async function saveData() {
 }
 
 // ── NAVIGATION ───────────────────────────────────────────
-function navigate(page) {
-  state.page = page;
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('nav-'+page).classList.add('active');
-  render();
-}
+function navigate(page){ state.page=page; render(); }
 
 function render() {
   if (!state.db) { renderNoData(); return; }
-  if (state.page==='producao') renderProducao();
-  else if (state.page==='receitas') renderReceitas();
-  else if (state.page==='petiscos') renderPetiscos();
-  else if (state.page==='historico') renderHistorico();
-  else if (state.page==='relatorio') renderRelatorio();
+  renderNav();
+  if (state.role==='renata'){
+    if (state.page==='carnes') return renderCarnes();
+    if (state.page==='comidas') return renderComidasRenata();
+    if (state.page!=='petiscos') state.page='petiscos';
+    return renderPetiscos();
+  }
+  if (state.page==='receitas') return renderReceitas();
+  if (state.page==='petiscos') return renderPetiscos();
+  if (state.page==='historico') return renderHistorico();
+  if (state.page==='relatorio') return renderRelatorio();
+  state.page='producao'; return renderProducao();
 }
 
 function renderNoData() {
@@ -3041,10 +3027,7 @@ function viewHistDetail(id){
     <div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:700;font-size:14px;color:var(--green-dark);border-top:2px solid var(--green)">
       <span>TOTAL</span><span style="font-family:'DM Mono',monospace">${(totalMP/1000).toFixed(3)} kg</span>
     </div>
-    <button class="btn btn-full" style="margin-top:12px;border-color:#C0392B;color:#C0392B;font-weight:700" onclick="fillComidaTemps('${id}')">
-      <i class="fas fa-temperature-high"></i> Temperaturas do cozimento (Renata)
-    </button>
-    <div style="display:flex;gap:8px;margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:12px">
       <button class="gen-btn" style="border-radius:10px;flex:1" onclick="closeModal();regenarPDFHist('${id}')">
         <i class="fas fa-file-pdf"></i> Ver PDF
       </button>
@@ -3132,12 +3115,80 @@ const PETISCO_TABS=[
 function getResp(){ try{ return localStorage.getItem('petnaturau-responsavel')||''; }catch(e){ return ''; } }
 function setResp(v){ try{ localStorage.setItem('petnaturau-responsavel',v||''); }catch(e){} }
 
-function renderPetiscos(){
+// ── MODO (Gui / Renata) — separação por link, lembrado no aparelho ──
+function getModo(){
+  try{
+    const u=new URLSearchParams(location.search).get('modo');
+    if(u){ const m=(u.toLowerCase()==='renata')?'renata':'gui'; try{localStorage.setItem('petnaturau-modo',m);}catch(e){} return m; }
+    return localStorage.getItem('petnaturau-modo')||'gui';
+  }catch(e){ return 'gui'; }
+}
+function modoBanner(sub){
+  if(state.role!=='renata') return '';
+  return `<div style="background:#C0392B;color:#fff;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-weight:700;font-size:13px"><i class="fas fa-user-check"></i>&nbsp; Modo Renata — ${sub||'preenchimento'}</div>`;
+}
+function renderNav(){
+  const nav=document.getElementById('bottom-nav'); if(!nav) return;
+  const tabs = state.role==='renata'
+    ? [{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'carnes',i:'fa-drumstick-bite',l:'Carnes'},{p:'comidas',i:'fa-temperature-high',l:'Comidas'}]
+    : [{p:'producao',i:'fa-clipboard-list',l:'Produção'},{p:'receitas',i:'fa-book-open',l:'Receitas'},{p:'petiscos',i:'fa-bone',l:'Petiscos'},{p:'historico',i:'fa-history',l:'Histórico'},{p:'relatorio',i:'fa-file-invoice',l:'Relatório'}];
+  nav.innerHTML=tabs.map(t=>`<button class="nav-btn ${state.page===t.p?'active':''}" id="nav-${t.p}" onclick="navigate('${t.p}')"><i class="fas ${t.i}"></i>${t.l}</button>`).join('');
+}
+
+function renderPetiscos(){ if(state.role==='renata') return renderPetiscosFill(); return renderPetiscosGestao(); }
+
+function renderPetiscosGestao(){
+  if(!state.petiscosTab) state.petiscosTab='petiscos';
+  const tab=state.petiscosTab;
+  const items=state.db.petiscosItems?.[tab]||[];
+  let html=`<div class="card-title" style="margin-bottom:12px;font-size:17px;font-family:'Coolvetica','DM Sans',sans-serif">Petiscos — itens & exportação</div>`;
+  html+=`<div class="tabs">`+PETISCO_TABS.map(t=>`<button class="tab-btn ${tab===t.key?'active':''}" onclick="setPetiscosTab('${t.key}')"><i class="fas ${t.icon}" style="font-size:11px;margin-right:3px"></i>${t.label}</button>`).join('')+`</div>`;
+  html+=`<button class="gen-btn" style="border-radius:10px;width:100%;margin:2px 0 12px" onclick="gerarPDFpetiscos()"><i class="fas fa-file-export"></i> Exportar PDF do dia (p/ fiscalização)</button>`;
+  if(!items.length){ html+=`<div class="empty"><i class="fas fa-box-open"></i><p>Nenhum item cadastrado em ${PETISCO_TABS.find(t=>t.key===tab).label}</p></div>`; }
+  else { html+=items.map((item,idx)=>{ const comp=PETISCO_COMP[item]||petiscoInfo(item,tab); return `<div class="pkt-section" style="display:flex;justify-content:space-between;align-items:center">
+     <div><div class="pkt-name" style="margin:0">${item}</div><div style="font-size:11px;color:var(--text-2)">${(comp.mp&&comp.mp.join(' + '))||''}</div></div>
+     <div style="white-space:nowrap"><button class="btn btn-icon btn-sm" style="border-color:var(--amber);color:var(--amber)" onclick="editPetiscoItem('${tab}',${idx})"><i class="fas fa-pen"></i></button>
+     <button class="btn btn-icon btn-sm btn-danger" onclick="deletePetiscoItem('${tab}',${idx})"><i class="fas fa-trash-alt"></i></button></div>
+   </div>`; }).join(''); }
+  html+=`<div class="card" style="margin-top:14px"><div class="card-header"><span class="card-title">+ Adicionar novo item</span></div><div class="field" style="margin-bottom:10px"><input type="text" id="new-petisco-name" placeholder="Nome do item (ex: Petisco de Carneiro)"></div><button class="btn btn-primary btn-full" onclick="addPetiscoItem('${tab}')"><i class="fas fa-plus"></i> Adicionar</button></div>`;
+  document.getElementById('content').innerHTML=html;
+}
+
+function renderCarnes(){
+  if(!state.carnesDate) state.carnesDate=state.today.date||todayStr();
+  let html=modoBanner('Carnes cozidas na sexta')+`<div class="card">
+    <div class="card-header"><span class="card-title"><i class="fas fa-drumstick-bite"></i> Carnes de sexta</span></div>
+    <div class="field" style="margin-bottom:6px"><label>Data do cozimento</label><input type="date" value="${state.carnesDate}" onchange="setCarnesDate(this.value)"></div>
+    <p style="font-size:11px;color:var(--text-2);margin:0 0 6px">Preencha só as carnes cozidas (temperatura, qtd de embalagens e obs). Marca e lote vêm do recebimento (FIFO). Mín. 74 °C.</p>
+    ${carnesInputsHTML()}
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="saveCarnesSexta()"><i class="fas fa-save"></i> Salvar registro</button>
+  </div>`;
+  document.getElementById('content').innerHTML=html;
+}
+
+function renderComidasRenata(){
+  const hist=(state.db.history||[]);
+  let html=modoBanner('Temperaturas do cozimento das comidas');
+  html+=`<div class="card-title" style="margin:2px 0 10px;font-size:16px">Comidas — preencher temperaturas</div>`;
+  if(!hist.length){ html+=`<div class="empty"><i class="fas fa-history"></i><p>Nenhuma produção de comida lançada ainda. O Gui lança a produção e ela aparece aqui pra você preencher.</p></div>`; }
+  else {
+    const sorted=[...hist].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    html+=sorted.map(h=>{ const n=Object.keys(h.temps||{}).length;
+      return `<div class="pkt-section" style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-weight:700;font-size:13px">${h.dateStr||h.date}</div>
+        <div style="font-size:11px;color:var(--text-2)">${(h.recipes||[]).slice(0,2).join(' · ')}${(h.recipes||[]).length>2?' …':''}${n?` &nbsp;·&nbsp; <span style="color:#2e7d32;font-weight:700">✓ ${n} temp.</span>`:''}</div></div>
+        <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="fillComidaTemps('${h.id}')"><i class="fas fa-temperature-high"></i> Preencher</button>
+      </div>`; }).join('');
+  }
+  document.getElementById('content').innerHTML=html;
+}
+
+function renderPetiscosFill(){
   if(!state.petiscosTab) state.petiscosTab='petiscos';
   const tab=state.petiscosTab;
   const items=state.db.petiscosItems?.[tab]||[];
 
-  let html=`<div class="tabs">`+PETISCO_TABS.map(t=>
+  let html=modoBanner('Registrar produção de petiscos')+`<div class="tabs">`+PETISCO_TABS.map(t=>
     `<button class="tab-btn ${tab===t.key?'active':''}" onclick="setPetiscosTab('${t.key}')">
       <i class="fas ${t.icon}" style="font-size:11px;margin-right:3px"></i>${t.label}
     </button>`).join('')+`</div>`;
@@ -3146,7 +3197,6 @@ function renderPetiscos(){
       <label>Responsável pelo preenchimento</label>
       <input type="text" placeholder="Seu nome (ex: Renata)" value="${(getResp()||'').replace(/"/g,'&quot;')}" oninput="setResp(this.value)">
     </div>`;
-  html+=`<button class="gen-btn" style="border-radius:10px;width:100%;margin:0 0 12px" onclick="gerarPDFpetiscos()"><i class="fas fa-file-export"></i> Exportar PDF do dia (só p/ fiscalização)</button>`;
 
   if(!items.length){
     html+=`<div class="empty"><i class="fas fa-box-open"></i><p>Nenhum item cadastrado em ${PETISCO_TABS.find(t=>t.key===tab).label}</p></div>`;
@@ -3167,8 +3217,6 @@ function renderPetiscos(){
       return `<div class="pkt-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="pkt-name" style="margin:0">${item}${badge}</div>
-          <div><button class="btn btn-icon btn-sm" style="border-color:var(--amber);color:var(--amber)" onclick="editPetiscoItem('${tab}',${idx})"><i class="fas fa-pen"></i></button>
-          <button class="btn btn-icon btn-sm btn-danger" onclick="deletePetiscoItem('${tab}',${idx})"><i class="fas fa-trash-alt"></i></button></div>
         </div>
         <div style="font-size:11px;color:var(--text-2);margin-bottom:8px"><b>Matéria-prima:</b> ${mpNome} &nbsp;·&nbsp; Marca/Lote: automático (FIFO do recebimento)</div>
         <div class="row2">
@@ -3204,14 +3252,6 @@ function renderPetiscos(){
       </div>`;
     }).join('');
   }
-
-  html+=`<div class="card" style="margin-top:14px">
-    <div class="card-header"><span class="card-title">+ Adicionar novo item</span></div>
-    <div class="field" style="margin-bottom:10px">
-      <input type="text" id="new-petisco-name" placeholder="Nome do item (ex: Petisco de Carneiro)">
-    </div>
-    <button class="btn btn-primary btn-full" onclick="addPetiscoItem('${tab}')"><i class="fas fa-plus"></i> Adicionar</button>
-  </div>`;
 
   document.getElementById('content').innerHTML=html;
 }
@@ -3497,7 +3537,7 @@ function setCarneField(carne,field,val){
   if(!state.db.carnesSexta[d][carne]) state.db.carnesSexta[d][carne]={};
   state.db.carnesSexta[d][carne][field]=val;
 }
-function setCarnesDate(v){ state.carnesDate=v; renderRelatorio(); }
+function setCarnesDate(v){ state.carnesDate=v; render(); }
 function saveCarnesSexta(){
   const d=state.carnesDate||state.today.date;
   const m=(state.db.carnesSexta&&state.db.carnesSexta[d])||{};
@@ -3569,10 +3609,8 @@ function renderRelatorio(){
       <div class="card-header"><span class="card-title"><i class="fas fa-drumstick-bite"></i> Registro de carnes (sexta) — preenchido no app</span></div>
       <div class="field" style="margin-bottom:6px"><label>Data do cozimento</label>
         <input type="date" value="${state.carnesDate||state.today.date}" onchange="setCarnesDate(this.value)"></div>
-      <p style="font-size:11px;color:var(--text-2);margin:0 0 6px;line-height:1.5">A Renata preenche só as carnes que forem cozidas (temperatura, qtd de embalagens e obs). Marca e lote vêm automáticos do recebimento (FIFO). Mín. 74 °C.</p>
-      ${carnesInputsHTML()}
-      <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="saveCarnesSexta()"><i class="fas fa-save"></i> Salvar registro</button>
-      <button class="gen-btn" style="border-radius:10px;width:100%;margin-top:8px" onclick="gerarPDFcarnes(state.carnesDate)"><i class="fas fa-file-export"></i> Exportar PDF (só p/ fiscalização)</button>
+      <p style="font-size:11px;color:var(--text-2);margin:0 0 8px;line-height:1.5">A Renata preenche as temperaturas no modo dela. Aqui você exporta o PDF já preenchido pra fiscalização.</p>
+      <button class="gen-btn" style="border-radius:10px;width:100%" onclick="gerarPDFcarnes(state.carnesDate)"><i class="fas fa-file-export"></i> Exportar PDF — Carnes (sexta)</button>
       <div style="font-size:11px;color:var(--text-3);margin-top:8px">O registro de petiscos/mastigáveis/saborizantes/caldos fica na aba <strong>Petiscos</strong>.</div>
     </div>`;
   document.getElementById('content').innerHTML=html;
@@ -3774,6 +3812,8 @@ function gerarRelatorioPeriodo(){
 }
 
 // ── INIT ──────────────────────────────────────────────────
+state.role = getModo();
+state.page = (state.role==='renata') ? 'petiscos' : 'producao';
 const gotToken = checkAuthCallback();
 if (gotToken) {
   loadData();
